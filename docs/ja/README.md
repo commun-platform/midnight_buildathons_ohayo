@@ -72,9 +72,9 @@ cp .env.example .env   # run.sh はファイルの存在だけを見る。中身
 ダッシュボードを配信する。ダッシュボードは常に実際にデプロイされたコントラクトに
 対して動く — seed 済みデータだけのオフラインモードは無い。
 
-<http://localhost:8787> を開き、API トークンを貼り付ける。
+<http://localhost:8787> を開き、**ID** 欄に次のいずれかを貼り付ける。
 
-| トークン | ロール | 見えるもの |
+| ID | ロール | 見えるもの |
 |---|---|---|
 | `admin` | 管理者 | 全作業員、データ管理画面、チェーン照合 |
 | `worker-1` | ユーザー | 自分の履歴のみ — **生の 0〜100 の値も含む** |
@@ -188,10 +188,12 @@ WASM も持たない。この境界はテストで強制している。
 
 [.env.example](../../.env.example) を `.env` にコピーする（git 管理外）。
 `run.sh` はこのファイルが存在するかどうかしか見ず、`MIDNIGHT_NETWORK` /
-`MIDNIGHT_GENESIS_SEED` / `INGESTER_SALT_HEX` / `DEVELOPMENT_PRIVATE_STATE_PASSWORD`
-はすべて開発用の既定値をコンテナに渡すので、Docker ハーネスを使う限り編集は不要。
-`run.sh` を経由せず `npm run condition:*` を Node ホストで直接実行する場合は
-`.env` の内容が実際に読まれるので、`MIDNIGHT_NETWORK=local` を設定すること。
+`INGESTER_SALT_HEX` / `DEVELOPMENT_PRIVATE_STATE_PASSWORD` は開発用の既定値を
+コンテナに渡すので、Docker ハーネスを使う限り編集は不要。`MIDNIGHT_GENESIS_SEED`
+には既定値を渡す仕組みすら無く、未設定なら `packages/midnight-chain` 自体が
+既知の devnet genesis seed にフォールバックする。`run.sh` を経由せず
+`npm run condition:*` を Node ホストで直接実行する場合は `.env` の内容が実際に
+読まれるので、`MIDNIGHT_NETWORK=local` を設定すること。
 
 devnet レーンを使うと `.env` に運用ウォレットのニーモニックとデプロイ済み
 コントラクトアドレスが書き足される。**バックアップを取り、絶対にコミットしない

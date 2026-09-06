@@ -76,9 +76,9 @@ the genesis seed, compiles and deploys the contract, and serves the dashboard
 joined to it. The dashboard always runs against a real deployed contract — there
 is no offline/sample-data mode.
 
-Then open <http://localhost:8787> and paste one of these API tokens:
+Then open <http://localhost:8787> and paste one of these into the **ID** field:
 
-| Token | Role | Sees |
+| ID | Role | Sees |
 |---|---|---|
 | `admin` | 管理者 admin | every worker, plus the Data admin screen and chain reconciliation |
 | `worker-1` | ユーザー worker | their own history — **including the raw 0–100 value** |
@@ -198,11 +198,12 @@ must stay private.
 
 Copy [.env.example](.env.example) to `.env` (git-ignored) — `run.sh` only checks
 that the file exists, and passes its own development defaults for
-`MIDNIGHT_NETWORK`, `MIDNIGHT_GENESIS_SEED`, `INGESTER_SALT_HEX` and
-`DEVELOPMENT_PRIVATE_STATE_PASSWORD` into the container, so no edits are needed
-for the Docker harness. Running the individual `npm run condition:*` scripts
-directly on a Node host (bypassing `run.sh`) does read `.env` for real; set
-`MIDNIGHT_NETWORK=local` there first.
+`MIDNIGHT_NETWORK`, `INGESTER_SALT_HEX` and `DEVELOPMENT_PRIVATE_STATE_PASSWORD`
+into the container, so no edits are needed for the Docker harness.
+`MIDNIGHT_GENESIS_SEED` needs no default at all: `packages/midnight-chain` falls
+back to the well-known devnet genesis seed whenever it's unset. Running the
+individual `npm run condition:*` scripts directly on a Node host (bypassing
+`run.sh`) does read `.env` for real; set `MIDNIGHT_NETWORK=local` there first.
 
 `.env` also accumulates the generated operating wallet mnemonic and the deployed
 contract address once you run the devnet lanes. **Back it up; never commit it.**

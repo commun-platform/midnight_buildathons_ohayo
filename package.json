@@ -1,0 +1,48 @@
+{
+  "name": "sadako-worksite-condition",
+  "version": "0.1.0",
+  "private": true,
+  "license": "Apache-2.0",
+  "type": "module",
+  "workspaces": [
+    "apps/*",
+    "apps/development/*",
+    "contracts/*",
+    "packages/*"
+  ],
+  "overrides": {
+    "@midnight-ntwrk/onchain-runtime-v3": "3.0.0"
+  },
+  "dependencies": {
+    "@midnight-ntwrk/onchain-runtime-v3": "3.0.0"
+  },
+  "scripts": {
+    "dev:guard": "node scripts/require-development-host.mjs",
+    "build": "npm run dev:guard && npm run build --workspaces --if-present",
+    "typecheck": "npm run dev:guard && npm run typecheck --workspaces --if-present",
+    "test": "npm run dev:guard && npm run contract:compile && npm run test -w @midnight-demo/shared && npm run test -w @midnight-demo/db && npm run test -w @midnight-demo/condition-read && npm run test -w @midnight-demo/ingester-core && npm run test -w @midnight-demo/ingester && npm run test -w @midnight-demo/gateway && npm run test -w @midnight-demo/condition-registry-contract && npm run test -w @midnight-demo/midnight-chain && npm run test -w @midnight-demo/condition-cli",
+    "verify": "npm run verify:portability && npm run test && npm run typecheck && npm run build",
+    "verify:portability": "node scripts/verify-repository-portability.mjs",
+    "contract:compile": "npm run dev:guard && npm run compile -w @midnight-demo/condition-registry-contract",
+    "dashboard:dev": "npm run serve -w @midnight-demo/gateway",
+    "db:up": "docker compose -f ops/local/docker-compose.yml up -d",
+    "db:down": "docker compose -f ops/local/docker-compose.yml down",
+    "db:seed:sample": "npm run seed -w @midnight-demo/ingester -- --sample",
+    "midnight:up": "docker compose -f ops/local/midnight-compose.yml up -d",
+    "midnight:down": "docker compose -f ops/local/midnight-compose.yml down",
+    "ingest:plan": "npm run plan -w @midnight-demo/ingester --",
+    "ingest:record": "npm run record -w @midnight-demo/ingester -- --local",
+    "ingest:submit": "npm run dev:guard && npm run submit -w @midnight-demo/condition-cli --",
+    "condition:wallet": "npm run dev:guard && npm run wallet -w @midnight-demo/condition-cli --",
+    "condition:funding": "npm run dev:guard && npm run funding -w @midnight-demo/condition-cli --",
+    "condition:deploy": "npm run dev:guard && npm run contract:compile && npm run deploy -w @midnight-demo/condition-cli --",
+    "condition:submit": "npm run dev:guard && npm run submit -w @midnight-demo/condition-cli --",
+    "condition:reconcile": "npm run dev:guard && npm run reconcile -w @midnight-demo/condition-cli --",
+    "condition:status": "npm run dev:guard && npm run status -w @midnight-demo/condition-cli --",
+    "condition:fund": "npm run dev:guard && npm run fund -w @midnight-demo/condition-cli --",
+    "gateway:serve": "npm run serve -w @midnight-demo/gateway --"
+  },
+  "engines": {
+    "node": ">=22.15.0"
+  }
+}

@@ -1,0 +1,92 @@
+CREATE TABLE rings (
+  id          TEXT PRIMARY KEY,
+  label       TEXT NOT NULL,
+  owner_label TEXT NOT NULL DEFAULT 'vendor',
+  status      TEXT NOT NULL DEFAULT 'pooled' CHECK (status IN ('pooled', 'deployed', 'retired', 'lost')),
+  created_at  TEXT NOT NULL
+);
+
+CREATE TABLE ring_worker_map (
+  ring_id   TEXT NOT NULL,
+  worker_id TEXT NOT NULL,
+  from_ts   TEXT NOT NULL,
+  to_ts     TEXT,
+  PRIMARY KEY (ring_id, from_ts)
+);
+
+CREATE INDEX ring_worker_map_worker ON ring_worker_map (worker_id);
+
+CREATE TABLE workers (
+  id         TEXT PRIMARY KEY,
+  created_at TEXT NOT NULL
+);
+
+CREATE TABLE worker_pii (
+  worker_id TEXT PRIMARY KEY,
+  name      TEXT NOT NULL
+);
+
+CREATE TABLE condition_readings (
+  id             INTEGER PRIMARY KEY AUTOINCREMENT,
+  ring_id        TEXT NOT NULL,
+  recorded_at    TEXT NOT NULL,
+  value          REAL NOT NULL,
+  source         TEXT NOT NULL DEFAULT 'manual' CHECK (source IN ('partner_api', 'manual')),
+  entered_by     TEXT,
+  status         TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'submitted', 'skipped')),
+  skip_reason    TEXT CHECK (skip_reason IN ('already_submitted', 'value_superseded', 'ring_unassigned', 'wearer_unknown', 'off_site', 'ambiguous_wearer')),
+  created_at     TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX condition_readings_ring ON condition_readings (ring_id, recorded_at);
+CREATE INDEX condition_readings_status ON condition_readings (status);
+
+CREATE TABLE submissions (
+  entry_key            TEXT PRIMARY KEY,
+  ring_id              TEXT NOT NULL,
+  period_start_ms      INTEGER NOT NULL,
+  timezone             TEXT NOT NULL,
+  recorded_at_ms       INTEGER NOT NULL,
+  band                 TEXT NOT NULL,
+  score_commitment_hex TEXT NOT NULL,
+  salt_ref             TEXT,
+  deployment_id        TEXT,
+  submitted_by         TEXT,
+  tx_id                TEXT,
+  tx_hash              TEXT,
+  block_height         TEXT,
+  submitted_at         TEXT NOT NULL,
+  chain_verified_at    TEXT,
+  reconciled_at        TEXT
+);
+
+CREATE INDEX submissions_ring_period ON submissions (ring_id, period_start_ms);
+
+CREATE TABLE salt_epochs (
+  id         TEXT PRIMARY KEY,
+  salt_hash  TEXT NOT NULL,
+  from_ms    INTEGER NOT NULL,
+  to_ms      INTEGER,
+  created_at TEXT NOT NULL
+);
+
+CREATE TABLE contract_deployments (
+  id          TEXT PRIMARY KEY,
+  network     TEXT NOT NULL,
+  address     TEXT NOT NULL,
+  deployed_at TEXT NOT NULL,
+  active      INTEGER NOT NULL DEFAULT 1
+);
+
+CREATE TABLE audit_log (
+  id            TEXT PRIMARY KEY,
+  actor_user_id TEXT,
+  action        TEXT NOT NULL,
+  target_table  TEXT NOT NULL,
+  target_id     TEXT NOT NULL,
+  before_json   TEXT,
+  after_json    TEXT,
+  ts            TEXT NOT NULL
+);
+
+CREATE INDEX audit_log_target ON audit_log (target_table, target_id);

@@ -1,0 +1,33 @@
+{
+  "name": "@midnight-demo/ingester",
+  "version": "0.1.0",
+  "private": true,
+  "license": "Apache-2.0",
+  "type": "module",
+  "exports": {
+    "./db": "./src/db.ts",
+    "./pipeline": "./src/pipeline.ts",
+    "./sources": "./src/sources.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "seed": "tsx src/cli.ts seed",
+    "plan": "tsx src/cli.ts plan",
+    "record": "tsx src/cli.ts record",
+    "test": "tsx --test src/*.test.ts"
+  },
+  "dependencies": {
+    "@midnight-demo/db": "*",
+    "@midnight-demo/ingester-core": "*",
+    "@midnight-demo/shared": "*",
+    "dotenv": "^17.2.1",
+    "tsx": "^4.23.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^6.0.3"
+  },
+  "engines": {
+    "node": ">=22.15.0"
+  }
+}

@@ -1,0 +1,65 @@
+pragma language_version 0.23;
+
+import CompactStandardLibrary;
+
+export enum ConditionBand { unclassified, danger, caution, normal }
+
+export struct ConditionEntry {
+    periodStartMs: Uint<64>;
+    recordedAt: Uint<64>;
+    scoreCommitment: Bytes<32>;
+    band: ConditionBand;
+    verified: Boolean;
+}
+
+export ledger entries: Map<Field, ConditionEntry>;
+export ledger submissionCount: Counter;
+export ledger lastSubmittedKey: Field;
+export ledger lastSubmittedBand: ConditionBand;
+
+constructor() {
+    submissionCount.increment(0);
+    lastSubmittedBand = ConditionBand.unclassified;
+}
+
+witness privateScoreCenti(entryKey: Field): Uint<32>;
+witness privateScoreNonce(entryKey: Field): Bytes<32>;
+
+export circuit submitCondition(
+    entryKey: Field,
+    periodStartMs: Uint<64>,
+    recordedAt: Uint<64>,
+    scoreCommitment: Bytes<32>
+): [] {
+    const key = disclose(entryKey);
+    assert(!entries.member(key), "entry already submitted for this ring/day");
+
+    const windowEnd = (periodStartMs + 108000000) as Uint<64>;
+    assert(recordedAt >= periodStartMs, "recordedAt is before the period day");
+    assert(recordedAt < windowEnd, "recordedAt is after the period-day window");
+
+    const scoreCenti = privateScoreCenti(key);
+    const nonce = privateScoreNonce(key);
+    assert(disclose(persistentCommit<Uint<32>>(scoreCenti, nonce) == scoreCommitment),
+        "score commitment mismatch");
+
+    const band = disclose(
+        scoreCenti >= 6000
+            ? ConditionBand.normal
+            : (scoreCenti >= 4000 ? ConditionBand.caution : ConditionBand.danger)
+    );
+
+    entries.insert(
+        key,
+        disclose(ConditionEntry {
+            periodStartMs: periodStartMs,
+            recordedAt: recordedAt,
+            scoreCommitment: scoreCommitment,
+            band: band,
+            verified: true
+        })
+    );
+    submissionCount.increment(1);
+    lastSubmittedKey = key;
+    lastSubmittedBand = band;
+}

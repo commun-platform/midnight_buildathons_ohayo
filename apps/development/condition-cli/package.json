@@ -1,0 +1,36 @@
+{
+  "name": "@midnight-demo/condition-cli",
+  "version": "0.1.0",
+  "private": true,
+  "license": "Apache-2.0",
+  "type": "module",
+  "scripts": {
+    "build": "node ../../../scripts/require-development-host.mjs && tsc -p tsconfig.json",
+    "typecheck": "node ../../../scripts/require-development-host.mjs && tsc -p tsconfig.json --noEmit",
+    "deploy": "node ../../../scripts/require-development-host.mjs && tsx src/cli.ts deploy",
+    "submit": "node ../../../scripts/require-development-host.mjs && tsx src/cli.ts submit",
+    "reconcile": "node ../../../scripts/require-development-host.mjs && tsx src/cli.ts reconcile",
+    "status": "node ../../../scripts/require-development-host.mjs && tsx src/cli.ts status",
+    "fund": "node ../../../scripts/require-development-host.mjs && tsx src/cli.ts fund",
+    "wallet": "node ../../../scripts/require-development-host.mjs && tsx src/cli.ts wallet",
+    "funding": "node ../../../scripts/require-development-host.mjs && tsx src/cli.ts funding",
+    "test": "node ../../../scripts/require-development-host.mjs && tsx --test src/*.test.ts"
+  },
+  "dependencies": {
+    "@midnight-demo/condition-registry-contract": "*",
+    "@midnight-demo/db": "*",
+    "@midnight-demo/ingester": "*",
+    "@midnight-demo/ingester-core": "*",
+    "@midnight-demo/midnight-chain": "*",
+    "@midnight-demo/shared": "*",
+    "dotenv": "^17.2.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.23.1",
+    "typescript": "^6.0.3"
+  },
+  "engines": {
+    "node": ">=22.15.0"
+  }
+}

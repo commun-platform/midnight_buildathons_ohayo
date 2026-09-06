@@ -1,0 +1,37 @@
+SADAKO — worksite worker-condition system
+Copyright 2026 The SADAKO contributors
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+
+--------------------------------------------------------------------------------
+Ecosystem attribution
+
+This project is built on Midnight, the privacy-preserving blockchain, and was
+developed for the Midnight Buildathon.
+
+  Midnight Network   https://midnight.network/
+  Documentation      https://docs.midnight.network/
+
+It depends on the following Midnight components, each distributed under its own
+license by the Midnight Foundation / Input Output:
+
+  @midnight-ntwrk/compact-runtime
+  @midnight-ntwrk/midnight-js-* (contracts, providers, indexer, http-client-proof-provider)
+  @midnight-ntwrk/wallet-sdk-*
+  @midnight-ntwrk/onchain-runtime-v3
+  @midnight-ntwrk/ledger
+  The Compact compiler (compactc) toolchain
+  midnightntwrk/midnight-node, indexer-standalone and proof-server container images
+
+The local devnet compose file under ops/local/ is adapted from
+midnightntwrk/midnight-local-dev.

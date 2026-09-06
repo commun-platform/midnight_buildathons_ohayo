@@ -1,0 +1,14 @@
+services:
+  libsql:
+    image: ghcr.io/tursodatabase/libsql-server:latest
+    container_name: mn-condition-libsql
+    ports:
+      - "8080:8080"
+    environment:
+      SQLD_NODE: primary
+    volumes:
+      - libsql-data:/var/lib/sqld
+    restart: unless-stopped
+
+volumes:
+  libsql-data:

@@ -43,6 +43,7 @@ export function conditionScoreCenti(value: number): number {
 
 export const CONDITION_NORMAL_MIN_CENTI = CONDITION_NORMAL_MIN * CONDITION_SCORE_SCALE;
 export const CONDITION_CAUTION_MIN_CENTI = CONDITION_CAUTION_MIN * CONDITION_SCORE_SCALE;
+export const CONDITION_MAX_CENTI = 100 * CONDITION_SCORE_SCALE;
 
 export function classifyConditionCenti(scoreCenti: number): ConditionBand {
   if (scoreCenti >= CONDITION_NORMAL_MIN_CENTI) return 'normal';

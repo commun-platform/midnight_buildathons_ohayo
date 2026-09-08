@@ -30,7 +30,7 @@ CREATE TABLE condition_readings (
   id             INTEGER PRIMARY KEY AUTOINCREMENT,
   ring_id        TEXT NOT NULL,
   recorded_at    TEXT NOT NULL,
-  value          REAL NOT NULL,
+  value          REAL NOT NULL CHECK (value >= 0 AND value <= 100),
   source         TEXT NOT NULL DEFAULT 'manual' CHECK (source IN ('partner_api', 'manual')),
   entered_by     TEXT,
   status         TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'submitted', 'skipped')),

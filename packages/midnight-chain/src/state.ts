@@ -1,6 +1,7 @@
 import { generateMnemonic, mnemonicToSeedSync, validateMnemonic } from '@scure/bip39';
 import { wordlist } from '@scure/bip39/wordlists/english.js';
 import { Buffer } from 'node:buffer';
+import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -98,6 +99,19 @@ function persistDevelopmentMnemonic(mnemonic: string): void {
   fs.chmodSync(developmentEnvPath, 0o600);
   process.env.DEVELOPMENT_WALLET_MNEMONIC = mnemonic;
   delete process.env.DEVELOPMENT_WALLET_SEED;
+}
+
+const SUBMITTER_KEY_DOMAIN = 'sadako:submitter:sk:v1';
+
+export function submitterSecretKeyHex(seed: string): string {
+  const normalized = seed.trim().replace(/^0x/i, '');
+  if (!seedPattern.test(normalized)) {
+    throw new Error('Cannot derive a submitter key from invalid seed material');
+  }
+  return createHash('sha256')
+    .update(SUBMITTER_KEY_DOMAIN)
+    .update(Buffer.from(normalized, 'hex'))
+    .digest('hex');
 }
 
 export function loadDeployment(network: NetworkId): DeploymentRecord | null {

@@ -7,6 +7,7 @@ import { deployContract } from '@midnight-ntwrk/midnight-js-contracts';
 import type { NetworkConfig } from './config.js';
 import { loadCompiledContract } from './contract.js';
 import { createProviders, waitForProofServer } from './providers.js';
+import { getOrCreateWalletCredentials, submitterSecretKeyHex } from './state.js';
 import type { WalletContext } from './wallet.js';
 
 export async function deployConditionRegistry(
@@ -20,7 +21,9 @@ export async function deployConditionRegistry(
     compiledContract: loaded.compiledContract as never,
     args: [],
     privateStateId: CONDITION_PRIVATE_STATE_ID,
-    initialPrivateState: createConditionPrivateState(),
+    initialPrivateState: createConditionPrivateState(
+      submitterSecretKeyHex(getOrCreateWalletCredentials().seed),
+    ),
   });
   return deployed.deployTxData.public.contractAddress;
 }

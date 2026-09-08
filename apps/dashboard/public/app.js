@@ -41,7 +41,7 @@ const T = {
     submit_fail: '送信に失敗しました。',
     data_h: 'データ管理（サーバー管理者）',
     data_p: 'リング・作業員のロスターをここで管理します。',
-    d_workers: '作業員', d_rings: 'リング',
+    d_workers: '作業員', d_rings: 'リング', d_records: '記録',
     add: '追加', del: '削除', del_confirm: '削除しますか？', edit: '編集',
     none_yet: 'まだありません。', added: '追加しました', updated: '更新しました', deleted: '削除しました',
     name: '名称',
@@ -86,7 +86,7 @@ const T = {
     submit_fail: 'Submit failed.',
     data_h: 'Data admin (server administrator)',
     data_p: 'Manage the roster — rings and workers.',
-    d_workers: 'Workers', d_rings: 'Rings',
+    d_workers: 'Workers', d_rings: 'Rings', d_records: 'Records',
     add: 'Add', del: 'Delete', del_confirm: 'Delete?', edit: 'Edit',
     none_yet: 'None yet.', added: 'Added', updated: 'Updated', deleted: 'Deleted',
     name: 'Name',
@@ -729,7 +729,7 @@ function ringsSection(r) {
     { name: 'label', label: t('name'), required: true },
     { name: 'id', label: 'id', ph: 'auto' },
   ], (i) => adminMut('POST', '/api/rings', { id: i.id.value || undefined, label: i.label.value }, 'added'));
-  return crudSection('d_rings', [t('name'), t('worker'), 'status', '記録', ''], rows, form);
+  return crudSection('d_rings', [t('name'), t('worker'), 'status', t('d_records'), ''], rows, form);
 }
 
 function submitOneForm(rings) {

@@ -9,6 +9,7 @@ import { findDeployedContract } from '@midnight-ntwrk/midnight-js-contracts';
 import type { NetworkConfig } from './config.js';
 import { loadCompiledContract } from './contract.js';
 import { createProviders, waitForProofServer } from './providers.js';
+import { getOrCreateWalletCredentials, submitterSecretKeyHex } from './state.js';
 import type { WalletContext } from './wallet.js';
 
 export interface TransactionSummary {
@@ -39,11 +40,11 @@ export async function submitCondition(
   await waitForProofServer(network);
 
   providers.privateStateProvider.setContractAddress(contractAddress);
-  const current =
-    (await providers.privateStateProvider.get(CONDITION_PRIVATE_STATE_ID)) ??
-    createConditionPrivateState();
-  const nextPrivateState = createConditionPrivateState([
-    ...current.entries.filter((entry) => entry.entryKey !== planned.entryKey),
+  const current = await providers.privateStateProvider.get(CONDITION_PRIVATE_STATE_ID);
+  const submitterKey =
+    current?.submitterSecretKeyHex ?? submitterSecretKeyHex(getOrCreateWalletCredentials().seed);
+  const nextPrivateState = createConditionPrivateState(submitterKey, [
+    ...(current?.entries ?? []).filter((entry) => entry.entryKey !== planned.entryKey),
     { entryKey: planned.entryKey, scoreCenti: planned.scoreCenti, nonceHex: planned.nonceHex },
   ]);
   await providers.privateStateProvider.set(CONDITION_PRIVATE_STATE_ID, nextPrivateState);

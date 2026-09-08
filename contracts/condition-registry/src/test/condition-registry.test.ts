@@ -16,6 +16,7 @@ import {
   CONDITION_BAND_ORDINAL,
   CONDITION_CAUTION_MIN_CENTI,
   CONDITION_DAY_WINDOW_MS,
+  CONDITION_MAX_CENTI,
   CONDITION_NORMAL_MIN_CENTI,
   type ConditionBand,
 } from '@midnight-demo/shared';
@@ -37,14 +38,20 @@ import {
 const SALT = new Uint8Array(16).fill(0x5a);
 const DAY_START_MS = Date.parse('2026-08-15T00:00:00.000+09:00');
 
+const SUBMITTER_KEY = '11'.repeat(32);
+const OTHER_KEY = '22'.repeat(32);
+
 class ConditionRegistrySimulator {
   readonly contract: Contract<ConditionPrivateState>;
   context: CircuitContext<ConditionPrivateState>;
 
-  constructor(privateEntries: ConditionPrivateEntry[]) {
+  constructor(privateEntries: ConditionPrivateEntry[], submitterKey = SUBMITTER_KEY) {
     this.contract = new Contract<ConditionPrivateState>(witnesses);
     const initial = this.contract.initialState(
-      createConstructorContext(createConditionPrivateState(privateEntries), '0'.repeat(64)),
+      createConstructorContext(
+        createConditionPrivateState(submitterKey, privateEntries),
+        '0'.repeat(64),
+      ),
     );
     this.context = {
       currentPrivateState: initial.currentPrivateState,
@@ -55,6 +62,20 @@ class ConditionRegistrySimulator {
         sampleContractAddress(),
       ),
     };
+  }
+
+  useSubmitterKey(submitterKey: string): void {
+    this.context = {
+      ...this.context,
+      currentPrivateState: {
+        ...this.context.currentPrivateState,
+        submitterSecretKeyHex: submitterKey,
+      },
+    };
+  }
+
+  ledger(): Ledger {
+    return ledger(this.context.currentQueryContext.state);
   }
 
   submit(s: Submission): Ledger {
@@ -171,6 +192,51 @@ describe('condition-registry submitCondition', () => {
     const sim = new ConditionRegistrySimulator([s.privateEntry]);
     expect(() => sim.submit(s)).toThrow('recordedAt is after the period-day window');
   });
+
+  it('accepts the top of the scale', async () => {
+    const s = await buildSubmission({ value: 100, ring: 'ring-max' });
+    const sim = new ConditionRegistrySimulator([s.privateEntry]);
+    expect(sim.submit(s).entries.lookup(s.entryKey).band).toBe(CONDITION_BAND_ORDINAL.normal);
+  });
+
+  it('rejects a private score above the 0..10000 range', async () => {
+    const s = await buildSubmission({ value: 150, ring: 'ring-oob' });
+    const sim = new ConditionRegistrySimulator([s.privateEntry]);
+    expect(() => sim.submit(s)).toThrow('scoreCenti is outside the 0..10000 range');
+    expect(sim.ledger().submissionCount).toBe(0n);
+  });
+});
+
+describe('condition-registry submitter authorization', () => {
+  it('seals the deploying submitter public key into the ledger', async () => {
+    const s = await buildSubmission({ value: 72 });
+    const mine = new ConditionRegistrySimulator([s.privateEntry], SUBMITTER_KEY).ledger();
+    const theirs = new ConditionRegistrySimulator([s.privateEntry], OTHER_KEY).ledger();
+
+    expect(mine.submitter).toHaveLength(32);
+    expect(mine.submitter).not.toEqual(new Uint8Array(32));
+    expect(Buffer.from(mine.submitter).toString('hex')).not.toBe(SUBMITTER_KEY);
+    expect(mine.submitter).not.toEqual(theirs.submitter);
+  });
+
+  it('rejects a submission from a holder of a different key', async () => {
+    const s = await buildSubmission({ value: 72 });
+    const sim = new ConditionRegistrySimulator([s.privateEntry]);
+    sim.useSubmitterKey(OTHER_KEY);
+
+    expect(() => sim.submit(s)).toThrow('not the registered submitter');
+    sim.useSubmitterKey(SUBMITTER_KEY);
+    expect(sim.submit(s).entries.lookup(s.entryKey).band).toBe(CONDITION_BAND_ORDINAL.normal);
+  });
+
+  it('checks authorization before the duplicate check, so a forgery cannot burn the key', async () => {
+    const s = await buildSubmission({ value: 20, ring: 'ring-forge' });
+    const sim = new ConditionRegistrySimulator([s.privateEntry]);
+    sim.useSubmitterKey(OTHER_KEY);
+
+    expect(() => sim.submit(s)).toThrow('not the registered submitter');
+    expect(sim.ledger().submissionCount).toBe(0n);
+  });
 });
 
 describe('condition-registry constants stay in step with the circuit', () => {
@@ -181,6 +247,7 @@ describe('condition-registry constants stay in step with the circuit', () => {
     );
     expect(source).toContain(`>= ${CONDITION_NORMAL_MIN_CENTI}`);
     expect(source).toContain(`>= ${CONDITION_CAUTION_MIN_CENTI}`);
+    expect(source).toContain(`<= ${CONDITION_MAX_CENTI}`);
     expect(source).toContain(`${CONDITION_DAY_WINDOW_MS}`);
   });
 

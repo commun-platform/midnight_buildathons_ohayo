@@ -83,3 +83,21 @@ test('LibSqlDatabase first / all / execute / batch round-trip', async () => {
   assert.deepEqual(all.map((row) => row.id), ['r1', 'r2', 'r3']);
   assert.equal(db.kind, 'libsql');
 });
+
+test('condition_readings rejects a value outside the partner 0..100 scale', async () => {
+  const db = fileDb();
+  await applyMigrations(db, loadConditionMigrations());
+  await runSqlScript(db, loadSampleRoster());
+
+  const insert = (value: number) =>
+    db.execute(
+      `INSERT INTO condition_readings (ring_id, recorded_at, value, source, created_at)
+       VALUES ('ring-1', ?, ?, 'partner_api', '2026-08-20T00:00:00Z')`,
+      [`2026-08-20T0${value % 10}:00:00Z`, value],
+    );
+
+  await assert.rejects(() => insert(101), /CHECK|constraint/i);
+  await assert.rejects(() => insert(-1), /CHECK|constraint/i);
+  await insert(0);
+  await insert(100);
+});

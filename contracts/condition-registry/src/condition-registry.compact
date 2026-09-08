@@ -16,8 +16,18 @@ export ledger entries: Map<Field, ConditionEntry>;
 export ledger submissionCount: Counter;
 export ledger lastSubmittedKey: Field;
 export ledger lastSubmittedBand: ConditionBand;
+export sealed ledger submitter: Bytes<32>;
+
+witness submitterSecretKey(): Bytes<32>;
+
+circuit submitterPublicKey(): Bytes<32> {
+    return persistentHash<Vector<2, Bytes<32>>>(
+        [pad(32, "sadako:submitter:pk:"), submitterSecretKey()]
+    );
+}
 
 constructor() {
+    submitter = disclose(submitterPublicKey());
     submissionCount.increment(0);
     lastSubmittedBand = ConditionBand.unclassified;
 }
@@ -31,6 +41,8 @@ export circuit submitCondition(
     recordedAt: Uint<64>,
     scoreCommitment: Bytes<32>
 ): [] {
+    assert(disclose(submitterPublicKey() == submitter), "not the registered submitter");
+
     const key = disclose(entryKey);
     assert(!entries.member(key), "entry already submitted for this ring/day");
 
@@ -42,6 +54,7 @@ export circuit submitCondition(
     const nonce = privateScoreNonce(key);
     assert(disclose(persistentCommit<Uint<32>>(scoreCenti, nonce) == scoreCommitment),
         "score commitment mismatch");
+    assert(disclose(scoreCenti <= 10000), "scoreCenti is outside the 0..10000 range");
 
     const band = disclose(
         scoreCenti >= 6000

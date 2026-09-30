@@ -9,3 +9,4 @@ export * from './staged.js';
 export * from './deploy.js';
 export * from './reader.js';
 export * from './genesis.js';
+export * from './chain.js';

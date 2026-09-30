@@ -3,9 +3,9 @@ import {
   classifyConditionCenti,
   conditionEntryKey,
   conditionScoreCenti,
-  conditionScoreCommitment,
   zonedDayStartMs,
 } from '@midnight-demo/shared';
+import { conditionScoreCommitment } from '@midnight-demo/shared/commitment';
 
 import type { ConditionRecord, PlannedSubmission, Ring, SkipReason } from './types.js';
 

@@ -35,3 +35,5 @@ license by the Midnight Foundation / Input Output:
 
 The local devnet compose file under ops/local/ is adapted from
 midnightntwrk/midnight-local-dev.
+
+Portions are ported from BACCHIRI, https://github.com/commun-platform/midnight_buildathons_bacchili (Apache-2.0).

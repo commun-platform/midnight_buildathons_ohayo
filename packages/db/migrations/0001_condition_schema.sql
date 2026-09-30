@@ -33,13 +33,22 @@ CREATE TABLE condition_readings (
   value          REAL NOT NULL CHECK (value >= 0 AND value <= 100),
   source         TEXT NOT NULL DEFAULT 'manual' CHECK (source IN ('partner_api', 'manual')),
   entered_by     TEXT,
-  status         TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'submitted', 'skipped')),
-  skip_reason    TEXT CHECK (skip_reason IN ('already_submitted', 'value_superseded', 'ring_unassigned', 'wearer_unknown', 'off_site', 'ambiguous_wearer')),
+  status         TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'queued', 'submitted', 'skipped', 'failed')),
+  skip_reason    TEXT CHECK (skip_reason IN ('already_submitted', 'unknown_ring', 'invalid_value', 'value_superseded', 'ring_unassigned', 'wearer_unknown', 'off_site', 'ambiguous_wearer')),
+  external_id    TEXT UNIQUE,
+  partner_sig    TEXT,
+  last_error     TEXT,
   created_at     TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 CREATE INDEX condition_readings_ring ON condition_readings (ring_id, recorded_at);
 CREATE INDEX condition_readings_status ON condition_readings (status);
+
+CREATE TABLE partner_sync (
+  source    TEXT PRIMARY KEY,
+  cursor    TEXT NOT NULL,
+  synced_at TEXT NOT NULL
+);
 
 CREATE TABLE submissions (
   entry_key            TEXT PRIMARY KEY,
@@ -57,7 +66,8 @@ CREATE TABLE submissions (
   block_height         TEXT,
   submitted_at         TEXT NOT NULL,
   chain_verified_at    TEXT,
-  reconciled_at        TEXT
+  reconciled_at        TEXT,
+  opening_ciphertext   TEXT
 );
 
 CREATE INDEX submissions_ring_period ON submissions (ring_id, period_start_ms);

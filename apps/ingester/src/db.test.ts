@@ -7,13 +7,8 @@ import test from 'node:test';
 import { loadSampleFeed, loadSampleRoster, runSqlScript } from '@midnight-demo/db';
 import type { SubmissionRecord } from '@midnight-demo/ingester-core';
 
-import {
-  loadConditionFeed,
-  loadRoster,
-  openIngesterDb,
-  recordSubmissions,
-  submittedEntryKeys,
-} from './db.js';
+import { openIngesterDb } from './db.js';
+import { loadConditionFeed, loadRoster, recordSubmissions, submittedEntryKeys } from './store.js';
 
 function fileEnv(): Record<string, string> {
   const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'ingest-db-')), 'ingester.db');

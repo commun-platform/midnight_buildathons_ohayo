@@ -15,7 +15,7 @@ export interface NetworkConfig {
 }
 
 export const repoRoot = fileURLToPath(new URL('../../../', import.meta.url));
-export const developmentEnvPath = path.join(repoRoot, '.env');
+export const developmentEnvPath = path.resolve(repoRoot, process.env.DEVELOPMENT_ENV_FILE?.trim() || '.env');
 loadEnv({ path: developmentEnvPath, quiet: true });
 loadEnv({ path: path.join(repoRoot, '.env.local'), quiet: true });
 

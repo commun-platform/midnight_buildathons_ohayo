@@ -1,3 +1,4 @@
+import type { OnChainEntry } from '@midnight-demo/condition-read';
 import type { ConditionBand } from '@midnight-demo/shared';
 
 export interface Ring {
@@ -41,4 +42,27 @@ export interface SubmissionRecord {
   txHash?: string | null;
   blockHeight?: string;
   submittedAt: string;
+}
+
+export interface TransactionSummary {
+  txId: string;
+  txHash: string | null;
+  blockHeight: string;
+}
+
+export interface SubmitReadingsRequest {
+  readings: readonly ConditionRecord[];
+  roster: readonly Ring[];
+  submittedEntryKeys: ReadonlySet<string>;
+  salt: Uint8Array;
+}
+
+export type ReadingOutcome =
+  | { status: 'submitted'; submission: PlannedSubmission; tx: TransactionSummary; recovered: boolean }
+  | { status: 'skipped'; reason: SkipReason }
+  | { status: 'failed'; error: string };
+
+export interface ConditionChain {
+  submitReadings(request: SubmitReadingsRequest): Promise<ReadingOutcome[]>;
+  readEntries(entryKeys: readonly string[]): Promise<Map<string, OnChainEntry>>;
 }

@@ -1,5 +1,3 @@
-import { CompactTypeUnsignedInteger, persistentCommit } from '@midnight-ntwrk/compact-runtime';
-
 async function sha256(value: Uint8Array): Promise<Uint8Array> {
   return new Uint8Array(await crypto.subtle.digest('SHA-256', new Uint8Array(value).buffer));
 }
@@ -49,13 +47,6 @@ export function classifyConditionCenti(scoreCenti: number): ConditionBand {
   if (scoreCenti >= CONDITION_NORMAL_MIN_CENTI) return 'normal';
   if (scoreCenti >= CONDITION_CAUTION_MIN_CENTI) return 'caution';
   return 'danger';
-}
-
-const scoreCentiType = new CompactTypeUnsignedInteger((1n << 32n) - 1n, 4);
-
-export function conditionScoreCommitment(scoreCenti: number, nonce: Uint8Array): Uint8Array {
-  if (nonce.length !== 32) throw new Error('Condition score nonce must be 32 bytes');
-  return persistentCommit(scoreCentiType, BigInt(scoreCenti), nonce);
 }
 
 function bigUint64BE(value: bigint): Uint8Array {

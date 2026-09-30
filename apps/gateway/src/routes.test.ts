@@ -186,6 +186,8 @@ test('handleApi: /api/config is unauthenticated display strings', async () => {
     network: 'Midnight Local',
     explorerUrl: 'https://explorer.example',
     submitEnabled: false,
+    partnerPullEnabled: false,
+    partnerUrl: null,
   });
 });
 
@@ -199,12 +201,17 @@ test('handleApi: /api/me resolves the role from the token', async () => {
   assert.equal(adm.role, 'admin');
   assert.equal(adm.admin, true);
   assert.equal(adm.workerId, null);
+  assert.equal(adm.ringId, null);
 
   const wkr = await bodyOf(await handleApi(get('/api/me', 'worker-1'), deps));
   assert.equal(wkr.role, 'worker');
   assert.equal(wkr.workerId, 'worker-1');
   assert.equal(wkr.workerName, '作業員 一郎');
   assert.equal(wkr.admin, false);
+  assert.equal(wkr.ringId, 'ring-1');
+
+  await db.execute("UPDATE ring_worker_map SET to_ts = '2026-09-01T00:00:00Z' WHERE worker_id = 'worker-1'");
+  assert.equal((await bodyOf(await handleApi(get('/api/me', 'worker-1'), deps))).ringId, null);
 });
 
 test('handleApi: unknown /api route is 404, non-/api is null', async () => {

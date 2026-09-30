@@ -7,12 +7,17 @@
   "exports": {
     "./db": "./src/db.ts",
     "./pipeline": "./src/pipeline.ts",
-    "./sources": "./src/sources.ts"
+    "./reconcile": "./src/reconcile.ts",
+    "./partner": "./src/partner.ts",
+    "./sources": "./src/sources.ts",
+    "./store": "./src/store.ts",
+    "./submit": "./src/submit.ts"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "seed": "tsx src/cli.ts seed",
     "plan": "tsx src/cli.ts plan",
+    "pull": "tsx src/cli.ts pull",
     "record": "tsx src/cli.ts record",
     "test": "tsx --test src/*.test.ts"
   },

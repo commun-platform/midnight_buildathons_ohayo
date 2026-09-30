@@ -125,7 +125,9 @@ function handleConfig(deps: GatewayDeps): Response {
   return json(200, {
     network: deps.config?.network ?? null,
     explorerUrl: deps.config?.explorerUrl ?? null,
-    submitEnabled: Boolean(deps.submit),
+    submitEnabled: Boolean(deps.submitStaged),
+    partnerPullEnabled: Boolean(deps.partner),
+    partnerUrl: deps.config?.partnerUrl ?? null,
   });
 }
 
@@ -138,12 +140,19 @@ async function handleMe(request: Request, deps: GatewayDeps): Promise<Response> 
         viewer.workerId,
       ])
     : null;
+  const ring = viewer.workerId
+    ? await deps.db.first<{ ring_id: string }>(
+        'SELECT ring_id FROM ring_worker_map WHERE worker_id = ? AND to_ts IS NULL ORDER BY from_ts DESC LIMIT 1',
+        [viewer.workerId],
+      )
+    : null;
 
   return json(200, {
     role: viewer.role,
     admin: viewer.role === 'admin',
     workerId: viewer.workerId ?? null,
     workerName: worker?.name ?? null,
+    ringId: ring?.ring_id ?? null,
   });
 }
 

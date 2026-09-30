@@ -93,7 +93,7 @@ are handled as `round(value × 100)` (0–10000), so the thresholds are 6000 / 4
 
 | Component | Assumption |
 |---|---|
-| Partner company | The computed value is correct (unsigned today; a partner signature would strengthen this) |
+| Partner company | The computed value is correct. Each value is Ed25519-signed by the partner and verified off-chain when SADAKO pulls it; the circuit does not check the signature yet |
 | Admin (server / DB owner) | The onboarding root — creates rings and workers and pairs them. Trusted to keep the roster right and to submit the partner's value **unmodified**. The chain guarantees no-tampering-after-submission and non-repudiation, not source authenticity at submission time |
 | Worker attribution | **An operator claim, not a cryptographic binding.** The chain carries only `entryKey` + band + commitment; which ring or worker an entry belongs to comes from the operator's DB |
 | Login tokens | A demo shape: the token *is* the worker id, with `admin` as the one fixed string. No passwords, no sessions. Production would replace this with OIDC |
@@ -116,7 +116,7 @@ rings / ring_worker_map /       roster — empty at first; the admin builds it i
 workers / worker_pii            Data admin screen (tests load sample-roster.sql)
 condition_readings              stands in for the partner API — empty at first
                                 (tests load sample-feed.sql; the dashboard's
-                                 submit form needs a chain and returns 501 here)
+                                 queue submit needs a chain and returns 501 here)
       │
       ▼
 apps/ingester   plan → record --local        the real work is in ingester-core:
@@ -250,20 +250,33 @@ worker_pii        (worker_id, name)
 
 ```
 condition_readings   (id, ring_id, recorded_at, value, source, entered_by?,
-                      status, skip_reason?, created_at)
+                      status, skip_reason?, external_id?, partner_sig?, last_error?, created_at)
+partner_sync         (source, cursor, synced_at)
 
 submissions          (entry_key, ring_id, period_start_ms, timezone, recorded_at_ms,
                       band, score_commitment_hex, salt_ref?, deployment_id?, submitted_by?,
-                      tx_id?, tx_hash?, block_height?, submitted_at, chain_verified_at?, reconciled_at?)
+                      tx_id?, tx_hash?, block_height?, submitted_at, chain_verified_at?, reconciled_at?,
+                      opening_ciphertext?)
 
 salt_epochs          (id, salt_hash, from_ms, to_ms?, created_at)
 contract_deployments (id, network, address, deployed_at, active)
 audit_log            (id, actor_user_id?, action, target_table, target_id, before_json?, after_json?, ts)
 ```
 
-- `condition_readings` is where the partner feed lands. In this build it is
-  written as a side effect of the Data admin screen's one-shot submit form
-  (`source = 'manual'`), not staged separately.
+- `condition_readings` is where the partner feed lands and the submission queue.
+  **Pull from partner** (`POST /api/partner/pull`, `pullPartnerScores` in
+  `apps/ingester/src/partner.ts`) inserts signature-checked partner values as
+  `source = 'partner_api'`, `status = 'pending'`, with the partner's id in
+  `external_id` (unique — a replay is a duplicate, a changed replay a conflict that
+  is never overwritten) and the signature in `partner_sig`. `partner_sync` holds the
+  partner's cursor. **Submit to chain** moves each queued row to `submitted`,
+  `skipped` (`skip_reason`) or `failed` (`last_error`; retried on the next submit);
+  `queued` is for the hosted runner. Scores come only from workers through the
+  partner: the admin can list, delete, pull and submit readings, but has no way to
+  enter or edit a value. The partner API is in
+  [`partner_mock_api.md`](partner_mock_api.md).
+- The admin never receives a partner row's raw value: `GET /api/staged` returns
+  `value: null` and the band for `source = 'partner_api'`.
 - `submissions` is **the ingester's local copy of the on-chain entries** — one row
   per `(ring, local day)`, keyed by the on-chain `Map` key. The read API serves
   bands from here rather than querying the chain on every request.
@@ -391,11 +404,16 @@ Three packages plus a CLI:
   `periodStartMs` resolution, planning (entryKey / scoreCommitment / band,
   idempotency). Unit-tested offline.
 - **`apps/ingester`** — the orchestration CLI (`plan` = dry run, `record --local`
-  = write to `submissions`) plus `db.ts`. `boundary.test.ts` enforces that it
-  **never imports the Midnight SDK**.
+  = write to `submissions`) plus `db.ts`, and the DB side of on-chain work:
+  `store.ts`, `submit.ts` (`submitStagedFeed`, `recordOutcomes`) and `reconcile.ts`
+  (`reconcileSubmissions`), which drive any `ConditionChain` (the port declared in
+  `ingester-core`). `boundary.test.ts` enforces that it **never imports the
+  Midnight SDK**.
 - **`packages/midnight-chain`** — the SDK layer: operating wallet, providers,
   `submitCondition` (tx + encrypted private state), `deployConditionRegistry`,
-  the real `indexerConditionReader`, and `reconcileSubmissions`.
+  the real `indexerConditionReader`, and `conditionChain(network, address)` —
+  `submitReadings` (plan, prove, submit; one outcome per reading) and
+  `readConditionEntries`. It does not read or write the database.
 - **`apps/development/condition-cli`** — the CLI over it:
   `deploy` / `submit` / `reconcile` / `status` / `fund` / `wallet` / `funding`.
 
@@ -466,21 +484,21 @@ itself and can only read what the server hands it.
 
 | Method / path | Who | What |
 |---|---|---|
-| `GET /api/config` | no auth | display strings (network name, explorer URL, submit availability) |
-| `GET /api/me` | any | the caller's role and name |
+| `GET /api/config` | no auth | display strings (network name, explorer URL, submit and partner-pull availability) |
+| `GET /api/me` | any | the caller's role, name and current `ringId` |
 | `GET /api/conditions/mine` | any | the caller's whole resolved scope |
 | `GET /api/conditions/all` | admin | every ring |
 | `GET /api/conditions/worker/:id` | admin, self | that worker's rings |
 | `POST /api/reconcile` | any (within scope) | re-check the given `entryKeys` against the chain |
 | `GET/POST/PATCH/DELETE /api/{rings,workers}` | admin | roster CRUD |
 | `GET /api/roster` | admin | the joined roster for the Data admin screen |
-| `GET/POST/PATCH/DELETE /api/staged[/:id]` | admin | the `condition_readings` feed |
-| `POST /api/staged/submit` | admin | submit every pending reading on-chain (devnet) |
-| `POST /api/submit` | admin | submit one ad-hoc reading on-chain (devnet) |
+| `GET /api/staged`, `DELETE /api/staged/:id` | admin | the `condition_readings` queue (partner rows: band only); no endpoint enters or edits a value |
+| `POST /api/partner/pull` | admin | pull signed scores from the partner into the queue |
+| `POST /api/staged/submit` | admin | submit every pending / failed reading on-chain (devnet) and record each outcome; `{ tamper: true }` sends a cross-band value to the chain while the local record keeps the worker's value (demo) |
 
 `from` / `to` query parameters bound the range (default: the last 30 days).
-The `/api/staged*` endpoints have no UI in the dashboard — the Data admin
-screen's submit form calls `/api/submit` directly, one reading at a time.
+The Data admin screen's **Submission queue** is the UI for `/api/staged*` and
+`/api/partner/pull`. Scores are entered only by workers, on the ring sync card.
 
 ### 7.3 Dashboard
 
@@ -490,12 +508,15 @@ screen's submit form calls `/api/submit` directly, one reading at a time.
 | Screen | admin | worker |
 |---|:-:|:-:|
 | Today — a worker card per person with the day's band | ● | — |
-| Today (self) — the day's band **plus the raw value**, and a month table | — | ● |
+| Today (self) — the day's band **plus the raw value**, a month table, and the **ring sync** card that posts a score straight to the partner | — | ● |
 | List — filter by range and worker, entryKey / tx columns, CSV export, verify | ● | — |
-| Data admin — rings and workers CRUD, one-shot on-chain submit | ● | — |
+| Data admin — rings and workers CRUD, the submission queue (pull from partner, submit to chain, tamper option) | ● | — |
 
 - Login is a pasted token: a worker uses their own id (`worker-1`), staff use
   `admin`.
+- The ring sync card sends from the browser to the partner (`PUBLIC_PARTNER_URL`),
+  never through SADAKO: the value reaches SADAKO only when the admin pulls. The
+  gateway adds the partner origin to the CSP `connect-src`.
 - The verify button calls `POST /api/reconcile`. Against a devnet it really reads
   the entry back and updates `chain_verified_at`. If the bands disagree, **the
   chain wins** — the local row is corrected and the mismatch is reported.
@@ -520,9 +541,9 @@ An admin can verify at two levels:
    establishes the on-chain band really was derived from that value, without
    trusting the operator's server.
 
-The Data admin screen has a "tamper the local record" checkbox that deliberately
-desynchronises the DB from the chain, so the reconcile detection can be
-demonstrated.
+The Data admin screen's submission queue has a "tamper the local record"
+checkbox that deliberately desynchronises the DB from the chain, so the reconcile
+detection can be demonstrated.
 
 ---
 
@@ -549,12 +570,12 @@ which entries belong to the same person.
 ```
 run.sh / run.ps1 / run.bat      one-command Docker harness (tests, dashboard, devnet, end-to-end)
 contracts/condition-registry/   Compact contract: submitCondition + witnesses + circuit tests
-packages/shared/                commitments, band vocabulary, timezone math, hex utils
-packages/db/                    SqlDatabase (libSQL), schema, migrations, local seed
+packages/shared/                band vocabulary, timezone math, hex utils; commitments under ./commitment
+packages/db/                    SqlDatabase (libSQL, D1), schema, migrations, local seed
 packages/ingester-core/         pure ingest logic: types, timezone math, planning, idempotency
 packages/condition-read/        read side: scope resolution, band-history assembly, ConditionReader
-packages/midnight-chain/        Midnight SDK layer: wallet, providers, submit, deploy, reconcile
-apps/ingester/                  ingester CLI: read roster + feed from the DB, build submissions
+packages/midnight-chain/        Midnight SDK layer: wallet, providers, submit, deploy, chain reads
+apps/ingester/                  ingester CLI + DB side of submit / reconcile over the chain port
 apps/gateway/                   authorized read API + the local Node server (also serves the SPA)
 apps/development/condition-cli/ on-chain CLI: deploy / submit / status / fund / …
 apps/dashboard/public/          framework-free SPA
@@ -592,9 +613,11 @@ The only required setting is `INGESTER_SALT_HEX` in `.env` (hex, ≥16 bytes). C
 
 ## 11. Open questions and future work
 
-- **Partner signature** — the provenance of the value rests on trusting the
-  operator. Signing the value at the partner and verifying that signature inside
-  the circuit would remove the operator from the trust base.
+- **Partner signature in the circuit** — values are now Ed25519-signed by the
+  partner and checked when pulled, which stops a forged or altered value from
+  entering the queue. The operator can still submit a different value on-chain;
+  verifying the partner signature inside the circuit would remove the operator from
+  the trust base.
 - **Salt rotation** — `salt_epochs` is in the schema, but the rotation procedure
   is not implemented.
 - **Missing days** — a day with no reading is simply absent. This build does not

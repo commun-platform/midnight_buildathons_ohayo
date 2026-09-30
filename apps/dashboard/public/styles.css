@@ -167,6 +167,16 @@ p.muted { color: var(--muted); margin: 0.3rem 0 1rem; }
 .chip.caution { color: var(--band-caution); background: var(--band-caution-bg); }
 .chip.danger { color: var(--band-danger); background: var(--band-danger-bg); }
 .chip.none { color: var(--muted); background: var(--bg); border-color: var(--border); }
+.chip.st-pending, .chip.st-queued { color: var(--accent); background: var(--accent-weak); }
+.chip.st-submitted { color: var(--band-normal); background: var(--band-normal-bg); }
+.chip.st-skipped { color: var(--muted); background: var(--bg); border-color: var(--border); }
+.chip.st-failed { color: var(--band-danger); background: var(--band-danger-bg); }
+.ring-sync { margin: 1rem 0 1.5rem; }
+.ring-sync h2 { margin: 0 0 0.25rem; }
+.ring-sync .submit-row input[type='number'] { width: 8rem; }
+.crud-section .submit-tamper { margin: 0 0 0.85rem; }
+.sync-result { margin: 0.75rem 0 0; }
+.queue-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; margin: 0.25rem 0 0.85rem; }
 .chip.big { padding: 0.2rem 0.8rem; font-size: 0.95rem; }
 .chip.huge { padding: 0.4rem 1.4rem; font-size: 1.4rem; border-radius: 12px; }
 

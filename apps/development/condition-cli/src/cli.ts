@@ -1,10 +1,12 @@
 import { config as loadEnv } from 'dotenv';
 import path from 'node:path';
 
-import { openIngesterDb, recordSubmissions } from '@midnight-demo/ingester/db';
+import { openIngesterDb } from '@midnight-demo/ingester/db';
 import { loadAndPlan, summarize } from '@midnight-demo/ingester/pipeline';
-import type { PlannedSubmission, SubmissionRecord } from '@midnight-demo/ingester-core';
+import { reconcileSubmissions, type ReconcileResult } from '@midnight-demo/ingester/reconcile';
+import { recordSubmissions, submissionRecord } from '@midnight-demo/ingester/store';
 import {
+  conditionChain,
   conditionContractAddress,
   createWallet,
   deployConditionRegistry,
@@ -15,7 +17,6 @@ import {
   loadDeployment,
   persistWalletState,
   queryConditionRegistry,
-  reconcileSubmissions,
   repoRoot,
   resolveNetwork,
   saveDeployment,
@@ -52,7 +53,9 @@ async function connectWallet(network: NetworkConfig): Promise<WalletContext> {
   const credentials = getOrCreateWalletCredentials();
   if (credentials.created && credentials.mnemonic) {
     process.stdout.write(`New operating wallet recovery phrase:\n${credentials.mnemonic}\n`);
-    process.stdout.write('Back up .env securely; it is the operating wallet recovery source.\n');
+    process.stdout.write(
+      `Back up ${path.basename(developmentEnvPath)} securely; it is the operating wallet recovery source.\n`,
+    );
   }
   process.stdout.write(`Syncing operating wallet with Midnight ${network.networkId}...\n`);
   const wallet = await createWallet(network.networkId, network, credentials.seed);
@@ -85,26 +88,6 @@ async function runDeploy(network: NetworkConfig): Promise<string> {
   }
 }
 
-function toSubmittedRecord(
-  planned: PlannedSubmission,
-  tx: { txId: string; txHash: string | null; blockHeight: string },
-  submittedAt: string,
-): SubmissionRecord {
-  return {
-    entryKey: planned.entryKey,
-    ringId: planned.ringId,
-    timezone: planned.timezone,
-    periodStartMs: planned.periodStartMs,
-    recordedAtMs: planned.recordedAtMs,
-    band: planned.band,
-    scoreCommitmentHex: planned.scoreCommitmentHex,
-    txId: tx.txId,
-    txHash: tx.txHash,
-    blockHeight: tx.blockHeight,
-    submittedAt,
-  };
-}
-
 async function runSubmit(network: NetworkConfig): Promise<void> {
   const db = await openIngesterDb();
   const inputs = await loadAndPlan(db);
@@ -130,7 +113,7 @@ async function runSubmit(network: NetworkConfig): Promise<void> {
         `submitting ${planned.ringId} ${new Date(planned.periodStartMs).toISOString()} (${planned.band}) ...\n`,
       );
       const tx = await submitCondition(wallet, network, contractAddress, planned);
-      await recordSubmissions(db, [toSubmittedRecord(planned, tx, new Date().toISOString())]);
+      await recordSubmissions(db, [submissionRecord(planned, tx, planned.band, new Date().toISOString())]);
       submitted += 1;
       process.stdout.write(`  tx ${tx.txId} block ${tx.blockHeight}\n`);
     }
@@ -138,19 +121,15 @@ async function runSubmit(network: NetworkConfig): Promise<void> {
 
     const entryKeys = inputs.plan.planned.map((planned) => planned.entryKey);
     process.stdout.write('confirming the submissions records against the chain ...\n');
-    printReconcile(await reconcileSubmissions(db, network, contractAddress, { entryKeys }));
+    printReconcile(
+      await reconcileSubmissions(db, conditionChain(network, contractAddress), { entryKeys }),
+    );
   } finally {
     await closeWallet(wallet, network);
   }
 }
 
-function printReconcile(r: {
-  confirmed: number;
-  localChecked: number;
-  mismatches: Array<{ entryKey: string; dbBand: string; chainBand: string }>;
-  valueMismatches: Array<{ entryKey: string; value: number; valueBand: string; chainBand: string }>;
-  missing: string[];
-}): void {
+function printReconcile(r: ReconcileResult): void {
   process.stdout.write(
     `  confirmed ${r.confirmed}  local-checked ${r.localChecked}  mismatches ${r.mismatches.length}  ` +
       `value-mismatches ${r.valueMismatches.length}  missing ${r.missing.length}\n`,
@@ -171,7 +150,7 @@ async function runReconcile(network: NetworkConfig): Promise<void> {
   const contractAddress = conditionContractAddress(
     flag('contract') ?? loadDeployment(network.networkId)?.contractAddress,
   );
-  printReconcile(await reconcileSubmissions(db, network, contractAddress));
+  printReconcile(await reconcileSubmissions(db, conditionChain(network, contractAddress)));
 }
 
 async function runStatus(network: NetworkConfig): Promise<void> {
@@ -220,7 +199,9 @@ async function main(): Promise<void> {
   if (command === 'deploy') {
     const address = await runDeploy(network);
     process.stdout.write(`\nconditionRegistry deployed: ${address}\n`);
-    process.stdout.write(`set in .env:  CONDITION_REGISTRY_CONTRACT_ADDRESS=${address}\n`);
+    process.stdout.write(
+      `set in ${path.basename(developmentEnvPath)}:  CONDITION_REGISTRY_CONTRACT_ADDRESS=${address}\n`,
+    );
     return;
   }
   if (command === 'submit') return runSubmit(network);

@@ -11,6 +11,9 @@ import {
   loadConditionMigrations,
   type SqlDatabase,
 } from '@midnight-demo/db';
+import { handlePartner } from '@midnight-demo/partner-mock/handler';
+import { loadPartnerMigrations } from '@midnight-demo/partner-mock/migrations';
+import { generatePartnerKeys, partnerSigner } from '@midnight-demo/partner-mock/signing';
 
 import { handleApi } from './routes.js';
 
@@ -80,33 +83,27 @@ test('admin roster: build ring → worker → assign', async () => {
   assert.equal((await call(DEL('/api/workers/worker-1', ADMIN)))?.status, 200);
 });
 
-test('admin feed: condition_readings CRUD + submit 501', async () => {
+test('admin queue: list and delete readings, but never enter or edit a score', async () => {
   const db = await bareDb();
   const deps = { db, reader: fakeReader(new Map()), salt: SALT };
   const call = (r: Request) => handleApi(r, deps);
 
   await call(POST('/api/rings', { id: 'ring-1', label: 'RING-A' }, ADMIN));
-
   assert.deepEqual((await body(await call(GET('/api/staged', ADMIN)))).rows, []);
 
-  const added = await body(
-    await call(POST('/api/staged', { ringId: 'ring-1', recordedAt: '2026-08-20T08:30:00+09:00', value: 72 }, ADMIN)),
-  );
-  assert.equal(added.band, 'normal');
-  assert.equal(added.status, 'pending');
-  const id = added.id as number;
-
   assert.equal(
-    (await call(POST('/api/staged', { ringId: 'ring-1', recordedAt: '2026-08-20T08:30:00+09:00', value: 200 }, ADMIN)))?.status,
-    400,
+    (await call(POST('/api/staged', { ringId: 'ring-1', recordedAt: '2026-08-20T08:30:00+09:00', value: 72 }, ADMIN)))?.status,
+    405,
   );
-  assert.equal(
-    (await call(POST('/api/staged', { ringId: 'ring-z', recordedAt: '2026-08-20T08:30:00+09:00', value: 50 }, ADMIN)))?.status,
-    404,
+  await db.execute(
+    `INSERT INTO condition_readings (ring_id, recorded_at, value, source, status, created_at)
+     VALUES ('ring-1', '2026-08-20T08:30:00+09:00', 72, 'partner_api', 'pending', '2026-08-20T00:00:00Z')`,
   );
-
-  const patched = await body(await call(PATCH(`/api/staged/${id}`, { value: 30 }, ADMIN)));
-  assert.equal(patched.band, 'danger');
+  const rows = (await body(await call(GET('/api/staged', ADMIN)))).rows;
+  assert.equal(rows.length, 1);
+  const id = rows[0].id as number;
+  assert.equal((await call(PATCH(`/api/staged/${id}`, { value: 30 }, ADMIN)))?.status, 405);
+  assert.equal((await call(GET('/api/staged', 'worker-1')))?.status, 401);
 
   assert.equal((await call(DEL(`/api/staged/${id}`, ADMIN)))?.status, 200);
   assert.equal((await call(DEL(`/api/staged/${id}`, ADMIN)))?.status, 404);
@@ -114,6 +111,92 @@ test('admin feed: condition_readings CRUD + submit 501', async () => {
   assert.equal((await call(POST('/api/staged/submit', {}, ADMIN)))?.status, 501);
   assert.equal(
     (await call(POST('/api/submit', { ringId: 'ring-1', value: 50, recordedAt: '2026-08-20T08:30:00+09:00' }, ADMIN)))?.status,
-    501,
+    405,
   );
+});
+
+test('admin queue submit passes the tamper option through and is admin-only', async () => {
+  const db = await bareDb();
+  const seen: Array<{ tamper?: boolean }> = [];
+  const deps = {
+    db,
+    reader: fakeReader(new Map()),
+    salt: SALT,
+    submitStaged: async (options: { tamper?: boolean }) => {
+      seen.push(options);
+      return { submitted: 1, skipped: 0, failed: 0, tampered: options.tamper ? 1 : 0, reconcile: null };
+    },
+  };
+  const call = (r: Request) => handleApi(r, deps);
+
+  assert.equal((await body(await call(GET('/api/config')))).submitEnabled, true);
+  assert.equal((await call(POST('/api/staged/submit', {}, 'worker-1')))?.status, 401);
+  assert.equal((await body(await call(POST('/api/staged/submit', {}, ADMIN)))).tampered, 0);
+  assert.equal((await body(await call(POST('/api/staged/submit', { tamper: true }, ADMIN)))).tampered, 1);
+  assert.equal((await body(await call(POST('/api/staged/submit', { tamper: 'yes' }, ADMIN)))).tampered, 0);
+  assert.deepEqual(seen, [{ tamper: false }, { tamper: true }, { tamper: false }]);
+});
+
+async function partnerPeer() {
+  const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'gw-partner-')), 'partner.db');
+  const db = createDatabase({ url: `file:${file}` });
+  await applyMigrations(db, loadPartnerMigrations());
+  const keys = await generatePartnerKeys();
+  const deps = { db, apiKey: 'partner-key', signer: await partnerSigner(keys.signingKey), allowedOrigin: 'http://gw' };
+  const fetchFn = (async (input: string | URL | Request, init?: RequestInit) =>
+    handlePartner(new Request(input, init), deps)) as typeof fetch;
+  return { deps, fetchFn, config: { url: 'http://partner', apiKey: 'partner-key', publicKeyHex: keys.publicKeyHex } };
+}
+
+test('admin partner pull: queue signed partner scores without exposing the raw value', async () => {
+  const db = await bareDb();
+  const peer = await partnerPeer();
+  const base = { db, reader: fakeReader(new Map()), salt: SALT };
+  await handleApi(POST('/api/rings', { id: 'ring-1', label: 'RING-A' }, ADMIN), base);
+
+  assert.equal((await handleApi(POST('/api/partner/pull', {}, ADMIN), base))?.status, 501);
+
+  const deps = { ...base, partner: peer.config, fetch: peer.fetchFn };
+  const call = (r: Request) => handleApi(r, deps);
+  assert.equal((await call(POST('/api/partner/pull', {}, 'worker-1')))?.status, 401);
+  assert.equal((await call(GET('/api/partner/pull', ADMIN)))?.status, 405);
+  assert.equal((await body(await call(GET('/api/config')))).partnerPullEnabled, true);
+
+  await handlePartner(
+    new Request('http://partner/v1/measurements', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ ringId: 'ring-1', measuredAt: '2026-09-30T08:00:00+09:00', score: 33 }),
+    }),
+    peer.deps,
+  );
+  await handlePartner(
+    new Request('http://partner/v1/simulate', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: 'Bearer partner-key' },
+      body: JSON.stringify({ ringIds: ['ring-9'], date: '2026-09-30' }),
+    }),
+    peer.deps,
+  );
+
+  const pulled = await body(await call(POST('/api/partner/pull', {}, ADMIN)));
+  assert.equal(pulled.fetched, 2);
+  assert.equal(pulled.inserted, 1);
+  assert.equal(pulled.unknownRing, 1);
+  assert.equal(pulled.badSignature, 0);
+
+  const staged = await body(await call(GET('/api/staged', ADMIN)));
+  assert.equal(staged.rows.length, 1);
+  const row = staged.rows[0];
+  assert.equal(row.source, 'partner_api');
+  assert.equal(row.value, null);
+  assert.equal(row.band, 'danger');
+  assert.equal(row.status, 'pending');
+  assert.ok(!JSON.stringify(staged).includes('33'));
+
+  assert.equal((await call(PATCH(`/api/staged/${row.id}`, { value: 90 }, ADMIN)))?.status, 405);
+  assert.equal((await body(await call(POST('/api/partner/pull', {}, ADMIN)))).fetched, 0);
+
+  const unreachable = { ...deps, fetch: (async () => { throw new Error('ECONNREFUSED'); }) as typeof fetch };
+  assert.equal((await handleApi(POST('/api/partner/pull', {}, ADMIN), unreachable))?.status, 502);
 });

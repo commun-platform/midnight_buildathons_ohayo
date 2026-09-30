@@ -29,23 +29,34 @@ const T = {
     reconcile_fail: '照合に失敗しました。',
     ring: 'リング', worker: '作業員', band: 'バンド',
     unset: '—',
-    submit_h: 'コンディション値を送信（devnet）',
-    submit_p: 'パートナー API の代わりに 1 件の測定値をオンチェーン記録します。生値は非公開で band のみ。',
-    submit_value: 'コンディション値（0–100）', submit_recorded: '取得時刻', submit_btn: '送信',
-    submit_pending: '送信中…（証明生成のため数十秒かかることがあります）',
-    submit_ok: '送信しました', submit_ok_tampered: '送信（記録とチェーンを不一致に）',
-    submit_ok_recovered: 'この記録は既にチェーンにありました（ローカル複製を復元）',
     submit_tamper: 'ローカル記録を改ざんする（デモ）',
-    submit_tamper_hint: '— 入力値をローカル記録に、チェーンには別バンドの値を送信します。次回の照合で不一致として検知されます。',
-    submit_dup: 'この日はすでに送信済みです（1 日 1 件）。',
-    submit_fail: '送信に失敗しました。',
+    submit_tamper_hint: '— 作業員の値はローカル記録に残し、チェーンには別バンドの値を送信します。一覧で照合を 2 回押すと不一致として検知されます。',
     data_h: 'データ管理（サーバー管理者）',
-    data_p: 'リング・作業員のロスターをここで管理します。',
+    data_p: 'リング・作業員のロスターと送信キューを管理します。スコアは作業員がリング同期で送り、ここでは取得とチェーンへの送信だけを行います。',
     d_workers: '作業員', d_rings: 'リング', d_records: '記録',
     add: '追加', del: '削除', del_confirm: '削除しますか？', edit: '編集',
     none_yet: 'まだありません。', added: '追加しました', updated: '更新しました', deleted: '削除しました',
     name: '名称',
     req_fail: '処理に失敗しました。',
+    q_h: '送信キュー',
+    q_p: 'パートナーから取得した値と手入力の値です。パートナーの生値はここにも表示しません（バンドのみ）。',
+    q_pull: 'パートナーから取得', q_pulling: '取得中…',
+    q_submit: 'チェーンへ送信', q_submitting: '送信中…（1 件ごとに証明を生成するため時間がかかります）',
+    q_pulled: '取得', q_new: '新規', q_dup: '重複', q_conflict: '衝突', q_badsig: '署名不正',
+    q_invalid: '範囲外', q_unknown_ring: '未登録リング',
+    q_result: '送信結果', q_ok: '記録', q_skip: 'スキップ', q_fail: '失敗',
+    q_tampered: 'ローカル記録とチェーンを不一致にしました（一覧で照合を 2 回押すと検知）',
+    q_none: '送信待ちの値はありません。', q_source: '出所', q_status: '状態',
+    src_partner_api: 'パートナー', src_manual: '手入力',
+    st_pending: '送信待ち', st_queued: '処理待ち', st_submitted: '記録済み', st_skipped: 'スキップ', st_failed: '失敗',
+    skip_already_submitted: 'この日は記録済み', skip_unknown_ring: '未登録のリング', skip_invalid_value: '不正な値',
+    sync_h: 'リング同期',
+    sync_p: 'リングのスコアを、パートナー（リングの会社）のサーバーへ直接送ります。SADAKO には管理者が取得したときに届きます。リング:',
+    sync_score_in: 'スコア（0–100）',
+    sync_send: 'パートナーへ送信', sync_sending: '送信中…',
+    sync_ok: 'パートナーへ送信しました', sync_fail: 'パートナーへの送信に失敗しました',
+    sync_score: 'パートナーが受け付けたスコア', sync_after: '管理者の取得と送信の後にチェーンへ記録されます。',
+    sync_hint: '0〜100 のスコアを入力して送信します。',
   },
   en: {
     title: 'SADAKO', language: 'Language', logout: 'Sign out',
@@ -74,23 +85,34 @@ const T = {
     reconcile_fail: 'Reconciliation failed.',
     ring: 'Ring', worker: 'Worker', band: 'Band',
     unset: '—',
-    submit_h: 'Submit a condition value (devnet)',
-    submit_p: 'A manual stand-in for the partner API — record one reading on-chain. The raw value stays private; only the band is disclosed.',
-    submit_value: 'Condition value (0–100)', submit_recorded: 'Recorded at', submit_btn: 'Submit',
-    submit_pending: 'Submitting… (generating the proof can take tens of seconds)',
-    submit_ok: 'Submitted', submit_ok_tampered: 'Submitted (record vs chain now disagree)',
-    submit_ok_recovered: 'This entry was already on chain (recovered the local copy)',
     submit_tamper: 'Tamper the local record (demo)',
-    submit_tamper_hint: '— the entered value goes into the local record; the chain gets a value from a different band. The next reconcile flags the mismatch.',
-    submit_dup: 'That day is already submitted (one entry per day).',
-    submit_fail: 'Submit failed.',
+    submit_tamper_hint: "— the worker's value stays in the local record; the chain gets a value from a different band. Pressing verify twice in the list flags the mismatch.",
     data_h: 'Data admin (server administrator)',
-    data_p: 'Manage the roster — rings and workers.',
+    data_p: 'Manage the roster and the submission queue. Workers send scores through ring sync; here you only pull them and submit them to the chain.',
     d_workers: 'Workers', d_rings: 'Rings', d_records: 'Records',
     add: 'Add', del: 'Delete', del_confirm: 'Delete?', edit: 'Edit',
     none_yet: 'None yet.', added: 'Added', updated: 'Updated', deleted: 'Deleted',
     name: 'Name',
     req_fail: 'Request failed.',
+    q_h: 'Submission queue',
+    q_p: 'Values pulled from the partner and entered by hand. A partner value is never shown here either — band only.',
+    q_pull: 'Pull from partner', q_pulling: 'Pulling…',
+    q_submit: 'Submit to chain', q_submitting: 'Submitting… (a proof per value — this takes a while)',
+    q_pulled: 'Pulled', q_new: 'new', q_dup: 'duplicate', q_conflict: 'conflict', q_badsig: 'bad signature',
+    q_invalid: 'out of range', q_unknown_ring: 'unknown ring',
+    q_result: 'Submitted', q_ok: 'recorded', q_skip: 'skipped', q_fail: 'failed',
+    q_tampered: 'the local record now disagrees with the chain (press verify twice in the list to catch it)',
+    q_none: 'Nothing waiting to be submitted.', q_source: 'Source', q_status: 'Status',
+    src_partner_api: 'partner', src_manual: 'manual',
+    st_pending: 'pending', st_queued: 'queued', st_submitted: 'recorded', st_skipped: 'skipped', st_failed: 'failed',
+    skip_already_submitted: 'day already recorded', skip_unknown_ring: 'unknown ring', skip_invalid_value: 'invalid value',
+    sync_h: 'Ring sync',
+    sync_p: "Sends your ring's score straight to the partner (the ring company). SADAKO receives it only when the admin pulls. Ring:",
+    sync_score_in: 'Score (0–100)',
+    sync_send: 'Send to partner', sync_sending: 'Sending…',
+    sync_ok: 'Sent to the partner', sync_fail: 'Sending to the partner failed',
+    sync_score: 'Score accepted by the partner', sync_after: 'It is recorded on chain after the admin pulls and submits it.',
+    sync_hint: 'Enter a score from 0 to 100 and send it.',
   },
 };
 
@@ -456,6 +478,42 @@ function monthPicker(ym, nav) {
   return { ySel, mSel };
 }
 
+function ringSyncCard() {
+  if (!state.cfg.partnerUrl || !state.me || !state.me.ringId) return null;
+  const score = h('input', { name: 'score', type: 'number', min: '0', max: '100', step: '0.01', required: true });
+  const result = h('p', { class: 'sync-result muted' }, t('sync_hint'));
+  const send = async (form) => {
+    const btn = form.querySelector('button[type=submit]');
+    btn.disabled = true;
+    btn.textContent = t('sync_sending');
+    try {
+      const res = await fetch(new URL('/v1/measurements', state.cfg.partnerUrl), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ringId: state.me.ringId, measuredAt: new Date().toISOString(), score: Number(score.value) }),
+      });
+      const r = await res.json().catch(() => null);
+      if (!res.ok) throw new Error((r && r.error) || String(res.status));
+      result.className = 'sync-result';
+      result.replaceChildren(h('strong', {}, `${t('sync_score')}: ${fmtValue(r.score)}`), ' — ', t('sync_after'));
+      toast(t('sync_ok'), 'ok');
+      score.value = '';
+    } catch (e) {
+      toast(`${t('sync_fail')}: ${e.message}`, 'err');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = t('sync_send');
+    }
+  };
+  return h('form', { class: 'card ring-sync', onsubmit: (ev) => { ev.preventDefault(); send(ev.currentTarget); } },
+    h('h2', {}, t('sync_h')),
+    h('p', { class: 'muted' }, t('sync_p'), ' ', h('span', { class: 'mono' }, state.me.ringId)),
+    h('div', { class: 'submit-row' },
+      h('label', {}, t('sync_score_in'), score),
+      h('button', { class: 'btn', type: 'submit' }, t('sync_send'))),
+    result);
+}
+
 async function viewWorkerSelf() {
   const workerId = state.me.workerId;
   const ym = ymFromHash();
@@ -508,6 +566,7 @@ async function viewWorkerSelf() {
   mount(
     h('h1', {}, t('self_h')),
     todayCard,
+    ringSyncCard(),
     picker,
     h('h2', {}, monthLabel),
     showValue ? h('p', { class: 'muted' }, t('value_note')) : false,
@@ -732,49 +791,82 @@ function ringsSection(r) {
   return crudSection('d_rings', [t('name'), t('worker'), 'status', t('d_records'), ''], rows, form);
 }
 
-function submitOneForm(rings) {
-  if (!state.cfg.submitEnabled || !rings.length) return null;
-  const ring = h('select', { name: 'ring' }, rings.map((r) => opt(r.id, `${r.label || r.id}${r.workerName ? ` · ${r.workerName}` : ''}`)));
-  const value = h('input', { name: 'value', type: 'number', min: '0', max: '100', step: '0.1', required: true });
-  const recorded = h('input', { name: 'recorded', type: 'datetime-local', value: toLocalInput(Date.now()), required: true });
-  const tamper = h('input', { name: 'tamper', type: 'checkbox' });
-  const doIt = async (form) => {
-    const btn = form.querySelector('button[type=submit]');
-    const fields = [ring, value, recorded, tamper];
-    btn.disabled = true;
-    btn.textContent = t('submit_pending');
-    form.classList.add('is-pending');
-    fields.forEach((f) => { f.disabled = true; });
-    try {
-      const r = await api('/api/submit', { method: 'POST', body: { ringId: ring.value, value: Number(value.value), recordedAt: new Date(recorded.value).toISOString(), tamper: tamper.checked } });
-      if (r.recovered) toast(`${t('submit_ok_recovered')}: ${bandOf(r.band)}`, 'warn');
-      else if (r.tampered) toast(`${t('submit_ok_tampered')}: ${bandOf(r.storedBand)} ⇄ ${bandOf(r.band)}`, 'warn');
-      else toast(`${t('submit_ok')}: ${bandOf(r.band)}`, 'ok');
-      route();
-    } catch (e) {
-      if (String(e.message) === 'unauthorized') return;
-      const err = e.body && e.body.error;
-      toast(err && /already-submitted/.test(err) ? t('submit_dup') : err || t('submit_fail'), 'err');
-      btn.disabled = false;
-      btn.textContent = t('submit_btn');
-      form.classList.remove('is-pending');
-      fields.forEach((f) => { f.disabled = false; });
-    }
-  };
-  return h('form', { class: 'submit-form', onsubmit: (ev) => { ev.preventDefault(); doIt(ev.currentTarget); } },
-    h('h3', {}, t('submit_h')),
-    h('p', { class: 'muted' }, t('submit_p')),
-    h('div', { class: 'submit-row' },
-      h('label', {}, t('ring'), ring), h('label', {}, t('submit_value'), value),
-      h('label', {}, t('submit_recorded'), recorded), h('button', { class: 'btn', type: 'submit' }, t('submit_btn'))),
-    h('label', { class: 'submit-tamper' }, tamper, h('span', {}, t('submit_tamper'), ' ', h('span', { class: 'muted' }, t('submit_tamper_hint')))));
+function statusChip(row) {
+  const detail = row.status === 'skipped' && row.skipReason
+    ? t(`skip_${row.skipReason}`)
+    : row.status === 'failed' ? row.lastError : null;
+  return h('span', { class: `chip st-${row.status}`, title: detail || '' },
+    t(`st_${row.status}`), detail ? ` · ${detail}` : '');
+}
+
+async function busyButton(btn, busyKey, idleKey, work) {
+  btn.disabled = true;
+  btn.textContent = t(busyKey);
+  try {
+    await work();
+    route();
+  } catch (e) {
+    if (String(e.message) === 'unauthorized') return;
+    toast((e.body && e.body.error) || t('req_fail'), 'err');
+    btn.disabled = false;
+    btn.textContent = t(idleKey);
+  }
+}
+
+function queueSection(rows) {
+  const waiting = rows.filter((r) => ['pending', 'queued', 'failed'].includes(r.status));
+  const pull = state.cfg.partnerPullEnabled
+    ? h('button', { class: 'btn', type: 'button', onclick: (ev) => busyButton(ev.currentTarget, 'q_pulling', 'q_pull', async () => {
+        const r = await api('/api/partner/pull', { method: 'POST', body: {} });
+        const parts = [[r.inserted, 'q_new'], [r.duplicates, 'q_dup'], [r.conflicts, 'q_conflict'],
+          [r.badSignature, 'q_badsig'], [r.invalid, 'q_invalid'], [r.unknownRing, 'q_unknown_ring']]
+          .filter(([n]) => n).map(([n, k]) => `${t(k)} ${n}`);
+        const bad = r.conflicts || r.badSignature || r.invalid || r.unknownRing;
+        toast(`${t('q_pulled')} ${r.fetched}${parts.length ? ` — ${parts.join(' / ')}` : ''}`, bad ? 'warn' : 'ok');
+      }) }, t('q_pull'))
+    : null;
+  const tamper = h('input', { type: 'checkbox' });
+  const submit = state.cfg.submitEnabled && waiting.length
+    ? h('button', { class: 'btn', type: 'button', onclick: (ev) => busyButton(ev.currentTarget, 'q_submitting', 'q_submit', async () => {
+        const r = await api('/api/staged/submit', { method: 'POST', body: { tamper: tamper.checked } });
+        const summary = `${t('q_result')}: ${t('q_ok')} ${r.submitted} / ${t('q_skip')} ${r.skipped} / ${t('q_fail')} ${r.failed}`;
+        if (r.tampered) toast(`${summary} — ${t('q_tampered')}`, 'warn');
+        else toast(summary, r.failed ? 'err' : r.skipped ? 'warn' : 'ok');
+      }) }, `${t('q_submit')} (${waiting.length})`)
+    : null;
+  const tamperOption = submit
+    ? h('label', { class: 'submit-tamper' }, tamper,
+        h('span', {}, t('submit_tamper'), ' ', h('span', { class: 'muted' }, t('submit_tamper_hint'))))
+    : null;
+  const body = rows.map((r) => {
+    const ms = Date.parse(r.recordedAt);
+    return h('tr', {},
+      h('td', { class: 'mono small' }, Number.isFinite(ms) ? `${fmtDay(ms)} ${fmtTime(ms)}` : r.recordedAt),
+      h('td', {}, r.ringLabel || r.ringId),
+      h('td', {}, r.workerName || '—'),
+      h('td', {}, bandChip(r.band)),
+      h('td', {}, t(`src_${r.source}`)),
+      h('td', {}, statusChip(r)),
+      h('td', { class: 'feed-actions' }, ['pending', 'failed'].includes(r.status) ? delBtn(`/api/staged/${r.id}`) : null));
+  });
+  return h('section', { class: 'crud-section' },
+    h('h2', {}, t('q_h')),
+    h('p', { class: 'muted' }, t('q_p')),
+    pull || submit ? h('div', { class: 'queue-actions' }, pull, submit) : null,
+    tamperOption,
+    rows.length
+      ? h('div', { class: 'table-wrap' }, h('table', { class: 'feed-table' },
+          h('thead', {}, h('tr', {}, ...[t('recorded'), t('ring'), t('worker'), t('band'), t('q_source'), t('q_status'), ''].map((hd) => h('th', {}, hd)))),
+          h('tbody', {}, body)))
+      : h('p', { class: 'muted' }, t('q_none')));
 }
 
 async function viewDataAdmin() {
   mount(h('div', { class: 'loading' }, '…'));
   let roster;
+  let staged;
   try {
-    roster = await api('/api/roster');
+    [roster, staged] = await Promise.all([api('/api/roster'), api('/api/staged')]);
   } catch (e) {
     if (String(e.message) === 'unauthorized') return;
     mount(banner(t('err_generic')));
@@ -785,7 +877,7 @@ async function viewDataAdmin() {
     h('p', { class: 'muted' }, t('data_p')),
     workersSection(roster),
     ringsSection(roster),
-    submitOneForm(roster.rings),
+    queueSection(staged.rows),
   );
 }
 

@@ -31,6 +31,7 @@
     "midnight:up": "docker compose -f ops/local/midnight-compose.yml up -d",
     "midnight:down": "docker compose -f ops/local/midnight-compose.yml down",
     "ingest:plan": "npm run plan -w @midnight-demo/ingester --",
+    "ingest:pull": "npm run pull -w @midnight-demo/ingester --",
     "ingest:record": "npm run record -w @midnight-demo/ingester -- --local",
     "ingest:submit": "npm run dev:guard && npm run submit -w @midnight-demo/condition-cli --",
     "condition:wallet": "npm run dev:guard && npm run wallet -w @midnight-demo/condition-cli --",

@@ -2,7 +2,7 @@ import {
   CONDITION_PRIVATE_STATE_ID,
   createConditionPrivateState,
 } from '@midnight-demo/condition-registry-contract/witnesses';
-import type { PlannedSubmission } from '@midnight-demo/ingester-core';
+import type { PlannedSubmission, TransactionSummary } from '@midnight-demo/ingester-core';
 import { hexToBytes } from '@midnight-demo/shared';
 import { findDeployedContract } from '@midnight-ntwrk/midnight-js-contracts';
 
@@ -12,11 +12,7 @@ import { createProviders, waitForProofServer } from './providers.js';
 import { getOrCreateWalletCredentials, submitterSecretKeyHex } from './state.js';
 import type { WalletContext } from './wallet.js';
 
-export interface TransactionSummary {
-  txId: string;
-  txHash: string | null;
-  blockHeight: string;
-}
+export type { TransactionSummary };
 
 function summarizeTransaction(transaction: unknown): TransactionSummary {
   const publicData = (transaction as {

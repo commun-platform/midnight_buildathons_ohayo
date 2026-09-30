@@ -90,7 +90,7 @@ Midnight のゼロ知識証明が「生値を隠したままバンドの導出�
 
 | コンポーネント | 信頼の前提 |
 |---|---|
-| 別会社 | 算出値が正しいことを前提とする（現状は署名なし。将来「別会社署名付き値」で強化可） |
+| 別会社 | 算出値が正しいことを前提とする。値には別会社の Ed25519 署名が付き、SADAKO が取得するときにオフチェーンで検証する。回路ではまだ検証しない |
 | 管理者（サーバー / DB オーナー） | オンボーディングの起点 — リングと作業員を作り、両者を紐づける。ロスターを正しく維持し、別会社の値を**改変せず**提出すると信頼する。チェーンが保証するのは「提出後の改ざん不可」「否認不可」であって、提出時点のソース認証ではない |
 | 作業員の帰属 | **運営者の主張であって暗号的な束縛ではない**。チェーンに載るのは `entryKey` ＋ band ＋ commitment のみ。どのリング・作業員のエントリかは運営者の DB 由来 |
 | ログイントークン | デモ構成。トークン＝作業員ID、`admin` のみ固定文字列。パスワードもセッションも無い。本番では OIDC 等に置き換える前提 |
@@ -113,7 +113,7 @@ rings / ring_worker_map /       ロスター — 初期は空。管理者がデ�
 workers / worker_pii            （テストは sample-roster.sql）
 condition_readings              別会社 API の代役 — 初期は空
                                 （テストは sample-feed.sql。ダッシュボードの
-                                 送信フォームはチェーンが必要でここでは 501）
+                                 キュー送信はチェーンが必要でここでは 501）
       │
       ▼
 apps/ingester   plan → record --local        実処理は ingester-core:
@@ -245,20 +245,30 @@ worker_pii        (worker_id, name)
 
 ```
 condition_readings   (id, ring_id, recorded_at, value, source, entered_by?,
-                      status, skip_reason?, created_at)
+                      status, skip_reason?, external_id?, partner_sig?, last_error?, created_at)
+partner_sync         (source, cursor, synced_at)
 
 submissions          (entry_key, ring_id, period_start_ms, timezone, recorded_at_ms,
                       band, score_commitment_hex, salt_ref?, deployment_id?, submitted_by?,
-                      tx_id?, tx_hash?, block_height?, submitted_at, chain_verified_at?, reconciled_at?)
+                      tx_id?, tx_hash?, block_height?, submitted_at, chain_verified_at?, reconciled_at?,
+                      opening_ciphertext?)
 
 salt_epochs          (id, salt_hash, from_ms, to_ms?, created_at)
 contract_deployments (id, network, address, deployed_at, active)
 audit_log            (id, actor_user_id?, action, target_table, target_id, before_json?, after_json?, ts)
 ```
 
-- `condition_readings` が別会社フィードの着地点。ハッカソン構成ではデータ管理
-  画面の一発送信フォームが副次的に書き込む（`source = 'manual'`）。フィードを
-  別途ステージングする画面は無い。
+- `condition_readings` は別会社フィードの着地点で、送信キューを兼ねる。
+  **パートナーから取得**（`POST /api/partner/pull`、`apps/ingester/src/partner.ts` の
+  `pullPartnerScores`）が、署名を検証した別会社の値を `source = 'partner_api'`、
+  `status = 'pending'` で入れる。別会社の id は `external_id`（一意。同じ内容の再送は重複、
+  内容の違う再送は衝突として扱い、上書きしない）、署名は `partner_sig` に入る。
+  `partner_sync` は別会社のカーソルを持つ。**チェーンへ送信** で、キューの各行は
+  `submitted`、`skipped`（`skip_reason`）、`failed`（`last_error`。次の送信で再試行）の
+  どれかになる。`queued` はホスト版の実行側用。スコアは作業員が別会社経由で送るものだけ。管理者は値の一覧・削除・
+  取得・送信はできるが、値を入力・編集する手段はない。別会社の API は [`partner_mock_api.md`](partner_mock_api.md)。
+- 管理者は別会社の行の生値を受け取らない。`GET /api/staged` は `source = 'partner_api'` の行に
+  ついて `value: null` とバンドだけを返す。
 - `submissions` は **ingester が持つオンチェーンエントリのローカル複製**。
   `(リング, 現地日)` ごとに 1 行。`entry_key` がオンチェーン `Map` のキーそのもの。
   読み取り API はこのテーブルから band を返す（チェーンに毎回問い合わせない）。
@@ -383,11 +393,14 @@ export circuit submitCondition(
   `periodStartMs` 解決、plan（entryKey / scoreCommitment / band 生成・冪等性判定））。
   オフラインでユニットテスト。
 - **`apps/ingester`** — オーケストレーション CLI（`plan` = ドライラン、
-  `record --local` = `submissions` テーブルに記録）＋ `db.ts`。
-  **Midnight SDK を import しない**ことを `boundary.test.ts` が強制する。
+  `record --local` = `submissions` テーブルに記録）＋ `db.ts`。加えてチェーン操作の
+  DB 側: `store.ts`、`submit.ts`（`submitStagedFeed`、`recordOutcomes`）、`reconcile.ts`
+  （`reconcileSubmissions`）。これらは `ingester-core` が定義する `ConditionChain` を
+  通してチェーンを扱う。**Midnight SDK を import しない**ことを `boundary.test.ts` が強制する。
 - **`packages/midnight-chain`** — Midnight SDK 層。運営ゲートウェイウォレット、
   provider、`submitCondition`（tx ＋ 暗号化 private state）、`deployConditionRegistry`、
-  実 `indexerConditionReader`、`reconcileSubmissions`。
+  実 `indexerConditionReader`、`conditionChain(network, address)`（`submitReadings` =
+  計画・証明・送信を行い値ごとの結果を返す、`readConditionEntries`）。DB は読み書きしない。
 - **`apps/development/condition-cli`** — 上記の CLI：
   `deploy` / `submit` / `reconcile` / `status` / `fund` / `wallet` / `funding`。
 
@@ -460,20 +473,20 @@ JSON                    { range, rings: [{ ringId, timezone,
 | メソッド / パス | 権限 | 内容 |
 |---|---|---|
 | `GET /api/config` | 認証不要 | 表示用の文字列（ネットワーク名、Explorer URL、submit 可否） |
-| `GET /api/me` | 全ロール | 呼び出し元のロール・氏名 |
+| `GET /api/me` | 全ロール | 呼び出し元のロール・氏名・現在の `ringId` |
 | `GET /api/conditions/mine` | 全ロール | 自分のスコープ全体の band 履歴 |
 | `GET /api/conditions/all` | 管理者 | 全リング |
 | `GET /api/conditions/worker/:id` | 管理者・本人 | その作業員のリング |
 | `POST /api/reconcile` | 全ロール（スコープ内） | 指定 `entryKeys` をチェーンと再照合 |
 | `GET/POST/PATCH/DELETE /api/{rings,workers}` | 管理者 | ロスター CRUD |
 | `GET /api/roster` | 管理者 | データ管理画面用の結合済みロスター |
-| `GET/POST/PATCH/DELETE /api/staged[/:id]` | 管理者 | `condition_readings` フィードの CRUD |
-| `POST /api/staged/submit` | 管理者 | 未提出フィードを一括オンチェーン提出（devnet） |
-| `POST /api/submit` | 管理者 | 1 件だけ即時オンチェーン提出（devnet） |
+| `GET /api/staged`、`DELETE /api/staged/:id` | 管理者 | `condition_readings` の送信キュー（別会社の行はバンドのみ）。値を入力・編集する API はない |
+| `POST /api/partner/pull` | 管理者 | 別会社から署名付きスコアを取得してキューに入れる |
+| `POST /api/staged/submit` | 管理者 | 送信待ち・失敗の値を一括オンチェーン提出（devnet）し、1 件ごとの結果を記録。`{ tamper: true }` ならローカル記録には作業員の値を残し、チェーンには別バンドの値を送る（デモ用） |
 
 `from` / `to` クエリで期間指定（既定は直近 30 日）。
-`/api/staged*` にはダッシュボード上の UI が無い。データ管理画面の送信フォームは
-`/api/submit` を直接呼び、1 件ずつ即時提出する。
+データ管理画面の「送信キュー」が `/api/staged*` と `/api/partner/pull` の UI。
+スコアを入力するのは作業員だけで、リング同期カードから送る。
 
 ### 7.3 ダッシュボード
 
@@ -483,12 +496,15 @@ JSON                    { range, rings: [{ ringId, timezone,
 | 画面 | 管理者 | ユーザー |
 |---|:-:|:-:|
 | 本日 — 作業員カード（当日バンド） | ● | — |
-| 本日（本人）— 当日のバンド＋**生値**、月別の記録表 | — | ● |
+| 本日（本人）— 当日のバンド＋**生値**、月別の記録表、スコアを別会社へ直接送る**リング同期**カード | — | ● |
 | 一覧 — 期間・作業員で絞り込み、entryKey / tx 表示、CSV 書き出し、照合 | ● | — |
-| データ管理 — リング・作業員の CRUD、その場でオンチェーン提出 | ● | — |
+| データ管理 — リング・作業員の CRUD、送信キュー（別会社から取得・チェーンへ送信・改ざんオプション） | ● | — |
 
 - ログインはトークンの貼り付け。作業員は自分の ID（`worker-1` など）、
   職員は `admin`。
+- リング同期カードは、ブラウザから別会社（`PUBLIC_PARTNER_URL`）へ直接送る。SADAKO は経由
+  しない。値が SADAKO に届くのは管理者が取得したとき。gateway は CSP の `connect-src` に
+  別会社のオリジンを加える。
 - 「照合」ボタンは `POST /api/reconcile` を叩く。devnet 接続時は実際に
   チェーンから読み戻して `chain_verified_at` を更新する。バンドが食い違えば
   **チェーン側を正**として上書きし、警告を出す。
@@ -512,7 +528,7 @@ JSON                    { range, rings: [{ ringId, timezone,
    これでチェーン上のバンドが「その生値から導かれたものである」ことを、
    運営者のサーバーを信頼せずに確認できる。
 
-デモでは、データ管理画面の「ローカル記録を改ざんする」チェックボックスで
+デモでは、データ管理画面の送信キューにある「ローカル記録を改ざんする」チェックボックスで
 DB とチェーンを意図的に食い違わせ、照合ボタンで検知される様子を見せられる。
 
 ---
@@ -540,12 +556,12 @@ DB とチェーンを意図的に食い違わせ、照合ボタンで検知さ�
 ```
 run.sh / run.ps1 / run.bat      Docker ワンコマンドハーネス（テスト・画面・devnet・E2E）
 contracts/condition-registry/   Compact コントラクト: submitCondition + witness + 回路テスト
-packages/shared/                commitment、バンド語彙、タイムゾーン計算、hex ユーティリティ
-packages/db/                    SqlDatabase（libSQL）、スキーマ、マイグレーション、seed
+packages/shared/                バンド語彙、タイムゾーン計算、hex ユーティリティ。commitment は ./commitment
+packages/db/                    SqlDatabase（libSQL、D1）、スキーマ、マイグレーション、seed
 packages/ingester-core/         純粋な取り込みロジック: 型、タイムゾーン、plan、冪等性
 packages/condition-read/        読み取り側: スコープ解決、band 履歴の組み立て、ConditionReader
-packages/midnight-chain/        Midnight SDK 層: ウォレット、provider、submit、deploy、reconcile
-apps/ingester/                  ingester CLI: DB からロスター・フィードを読み提出案を作る
+packages/midnight-chain/        Midnight SDK 層: ウォレット、provider、submit、deploy、チェーン読み取り
+apps/ingester/                  ingester CLI ＋ チェーン操作（送信・照合）の DB 側
 apps/gateway/                   読み取り API ＋ ローカル Node サーバー（SPA も配信）
 apps/development/condition-cli/ オンチェーン CLI: deploy / submit / status / fund / …
 apps/dashboard/public/          フレームワークレス SPA
@@ -582,8 +598,9 @@ Docker だけあればよい。
 
 ## 11. 未決事項・将来拡張
 
-- **別会社署名** — 現状、算出値の出所は運営者への信頼に依存する。値に別会社の
-  署名を付け、回路内で検証すれば、運営者による改変も排除できる。
+- **回路内での別会社署名の検証** — 値には別会社の Ed25519 署名が付き、取得時に検証する
+  ので、偽造・改変された値はキューに入らない。ただし運営者はチェーンに別の値を送れる。
+  署名を回路内で検証すれば、運営者を信頼の前提から外せる。
 - **salt ローテーション** — `salt_epochs` のスキーマは用意してあるが、
   ローテーション手順は未実装。
 - **欠測の扱い** — 記録の無い日は「エントリ無し」とだけ分かる。

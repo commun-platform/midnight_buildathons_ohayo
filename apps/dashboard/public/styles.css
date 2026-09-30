@@ -191,6 +191,14 @@ button.chip.decision { cursor: pointer; font: inherit; font-size: 0.78rem; }
 .dec-reason { display: block; font-size: 0.85rem; color: var(--muted); }
 .dec-reason textarea { display: block; width: 100%; margin-top: 0.25rem; font: inherit; }
 .dialog-actions { display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 0.8rem; }
+.guest-bar { display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap;
+  padding: 0.45rem 1.2rem; background: var(--band-caution-bg); color: var(--band-caution); font-size: 0.85rem; }
+.guest-bar .persona { display: flex; gap: 0.4rem; align-items: center; }
+.guest-entry { margin-top: 1.2rem; padding-top: 1rem; border-top: 1px solid var(--border); }
+.banner.warn p { margin: 0.35rem 0; }
+.key-hash, .invite-code { word-break: break-all; }
+.invite-code { font-size: 1.4rem; letter-spacing: 0.08em; }
+.login label { display: block; margin-top: 0.8rem; font-size: 0.85rem; color: var(--muted); }
 .queue-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; margin: 0.25rem 0 0.85rem; }
 .chip.big { padding: 0.2rem 0.8rem; font-size: 0.95rem; }
 .chip.huge { padding: 0.4rem 1.4rem; font-size: 1.4rem; border-radius: 12px; }

@@ -4,9 +4,20 @@ const LS_LANG = 'wc_lang';
 const T = {
   ja: {
     title: 'SADAKO', language: '言語', logout: 'ログアウト',
-    login_h: 'ログイン', login_p: 'IDを入力してください。',
-    token: 'ID', connect: 'ログイン',
-    err_token: 'そのIDは無効です。', err_generic: '読み込みに失敗しました。',
+    login_h: 'ログイン', login_p: 'Midnight ウォレット（Lace）で署名してログインします。署名に手数料はかかりません。',
+    connect: 'Lace で接続してログイン', connecting: 'ウォレットで署名してください…',
+    invite: '招待コード（初回のみ）', invite_ph: 'XXXX-XXXX-XXXX',
+    no_wallet: 'Midnight ウォレット（DApp Connector 4.x）が見つかりません。Lace をインストールするか、ゲストとして試してください。',
+    login_fail: 'ログインできませんでした',
+    unregistered_h: 'このウォレットは未登録です',
+    unregistered_p: '作業員の方は、管理者から受け取った招待コードを入れてもう一度接続してください。管理者の場合は、次の値を ADMIN_WALLET_KEY_HASHES に設定してサーバーを再起動してください。',
+    copy: 'コピー', copied: 'コピーしました',
+    guest_btn: 'ゲストとして試す（ウォレット不要）', guest_p: '評価用のサンドボックスです。あなた専用の作業員とリングが作られ、2 時間で失効します。',
+    guest_bar: 'サンドボックス — 本番のログインはウォレット', persona: '表示中の役',
+    persona_worker: '作業員', persona_admin: '管理者',
+    invite_btn: '招待コード発行', invite_done: '招待コード（一度だけ表示・7 日間有効）', wallet_col: 'ウォレット',
+    wallet_bound: '連携済み', wallet_none: '未連携', revoke: '連携解除', revoke_confirm: 'このウォレット連携を解除しますか？',
+    err_generic: '読み込みに失敗しました。',
     nav_overview: '本日', nav_records: '一覧', nav_data: 'データ管理',
     overview_h: '本日のコンディション',
     from: '開始日', to: '終了日', apply: '適用', all_workers: '全員',
@@ -66,9 +77,20 @@ const T = {
   },
   en: {
     title: 'SADAKO', language: 'Language', logout: 'Sign out',
-    login_h: 'Log in', login_p: 'Enter your ID.',
-    token: 'ID', connect: 'Log in',
-    err_token: 'That ID is not valid.', err_generic: 'Failed to load.',
+    login_h: 'Log in', login_p: 'Sign in with your Midnight wallet (Lace). Signing costs no fee.',
+    connect: 'Connect Lace and log in', connecting: 'Approve the signature in your wallet…',
+    invite: 'Invite code (first time only)', invite_ph: 'XXXX-XXXX-XXXX',
+    no_wallet: 'No Midnight wallet (DApp Connector 4.x) found. Install Lace, or try it as a guest.',
+    login_fail: 'Login failed',
+    unregistered_h: 'This wallet is not registered',
+    unregistered_p: 'Workers: connect again with the invite code from your admin. Admins: put this value in ADMIN_WALLET_KEY_HASHES and restart the server.',
+    copy: 'Copy', copied: 'Copied',
+    guest_btn: 'Try it as a guest (no wallet)', guest_p: 'An evaluation sandbox: you get your own worker and ring, and it expires in 2 hours.',
+    guest_bar: 'Sandbox — the real login is a wallet', persona: 'Viewing as',
+    persona_worker: 'worker', persona_admin: 'admin',
+    invite_btn: 'Issue invite code', invite_done: 'Invite code (shown once, valid 7 days)', wallet_col: 'Wallet',
+    wallet_bound: 'linked', wallet_none: 'not linked', revoke: 'Unlink', revoke_confirm: 'Unlink this wallet?',
+    err_generic: 'Failed to load.',
     nav_overview: 'Today', nav_records: 'List', nav_data: 'Data admin',
     overview_h: "Today's condition",
     from: 'From', to: 'To', apply: 'Apply', all_workers: 'All workers',
@@ -368,31 +390,119 @@ function pendingButtons(entries) {
       `${t('reverify_pending')} (${pending.length})`),
   ];
 }
+async function postPublic(path, body, token) {
+  const res = await fetch(path, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    body: JSON.stringify(body || {}),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw Object.assign(new Error(data.error || String(res.status)), { body: data, status: res.status });
+  return data;
+}
+
+function midnightWallet() {
+  const injected = window.midnight || {};
+  return Object.values(injected).find((w) => w && typeof w === 'object'
+    && typeof w.connect === 'function' && /^4\./.test(String(w.apiVersion || ''))) || null;
+}
+
+async function startSession(r) {
+  setToken(r.session);
+  state.me = null;
+  location.hash = '#/overview';
+  await route();
+}
+
+async function walletLogin(inviteCode) {
+  const wallet = midnightWallet();
+  if (!wallet) throw Object.assign(new Error(t('no_wallet')), { body: {} });
+  const connected = await wallet.connect(state.cfg.walletNetworkId || 'preprod');
+  if (typeof connected.getConnectionStatus === 'function') {
+    const status = await connected.getConnectionStatus();
+    if (status && status.status && status.status !== 'connected') throw new Error(t('login_fail'));
+  }
+  if (typeof connected.signData !== 'function') throw new Error(t('no_wallet'));
+  const challenge = await postPublic('/api/auth/challenge', inviteCode ? { inviteCode } : {});
+  const signed = await connected.signData(challenge.message, { encoding: 'text', keyType: 'unshielded' });
+  const r = await postPublic('/api/auth/verify', {
+    challengeId: challenge.challengeId,
+    data: signed.data,
+    signature: signed.signature,
+    verifyingKey: signed.verifyingKey,
+  });
+  await startSession(r);
+}
+
+function unregisteredPanel(keyHash) {
+  const copy = h('button', { class: 'btn secondary sm', type: 'button', onclick: async () => {
+    try { await navigator.clipboard.writeText(keyHash); toast(t('copied'), 'ok'); } catch { }
+  } }, t('copy'));
+  return h('div', { class: 'banner warn' },
+    h('strong', {}, t('unregistered_h')),
+    h('p', {}, t('unregistered_p')),
+    h('code', { class: 'mono small key-hash' }, keyHash), ' ', copy);
+}
+
 function viewLogin() {
-  const input = h('input', { id: 'id-input', type: 'text', autocomplete: 'off', spellcheck: 'false', value: state.token });
-  const err = h('div');
+  const status = h('div');
+  const invite = h('input', { id: 'invite-input', type: 'text', autocomplete: 'off', spellcheck: 'false', placeholder: t('invite_ph') });
+  const connectBtn = h('button', { class: 'btn', type: 'submit' }, t('connect'));
   const submit = async (e) => {
     e.preventDefault();
-    err.replaceChildren();
-    setToken(input.value.trim());
+    status.replaceChildren();
+    connectBtn.disabled = true;
+    connectBtn.textContent = t('connecting');
     try {
-      state.me = await api('/api/me');
-      location.hash = home();
-    } catch {
-      setToken('');
-      err.replaceChildren(banner(t('err_token')));
+      await walletLogin(invite.value.trim());
+    } catch (err) {
+      const body = err.body || {};
+      if (body.code === 'unregistered' && body.keyHash) status.replaceChildren(unregisteredPanel(body.keyHash));
+      else status.replaceChildren(banner(`${t('login_fail')}: ${err.message}`));
+    } finally {
+      connectBtn.disabled = false;
+      connectBtn.textContent = t('connect');
     }
   };
+  const guest = state.cfg.guestEntry
+    ? h('div', { class: 'guest-entry' },
+        h('button', { class: 'btn secondary', type: 'button', onclick: async (ev) => {
+          ev.currentTarget.disabled = true;
+          try { await startSession(await postPublic('/api/auth/guest')); }
+          catch (err) { status.replaceChildren(banner(`${t('login_fail')}: ${err.message}`)); ev.currentTarget.disabled = false; }
+        } }, t('guest_btn')),
+        h('p', { class: 'muted small' }, t('guest_p')))
+    : null;
   mount(
     h('form', { class: 'card login', onsubmit: submit },
       h('h1', {}, t('login_h')),
       h('p', { class: 'muted' }, t('login_p')),
-      err,
-      h('label', { for: 'id-input' }, t('token')),
-      input,
-      h('button', { class: 'btn', type: 'submit' }, t('connect')),
+      status,
+      midnightWallet() ? null : h('p', { class: 'muted small' }, t('no_wallet')),
+      h('label', { for: 'invite-input' }, t('invite')),
+      invite,
+      connectBtn,
+      guest,
     ),
   );
+}
+
+function guestBar() {
+  const existing = document.getElementById('guest-bar');
+  if (!state.me || !state.me.guest) { if (existing) existing.remove(); return; }
+  const persona = (role) => h('button', {
+    class: `btn sm ${state.me.role === role ? '' : 'secondary'}`, type: 'button',
+    onclick: async () => {
+      if (state.me.role === role) return;
+      try { await startSession(await postPublic('/api/auth/guest/persona', { role }, state.token)); }
+      catch (err) { toast(err.message, 'err'); }
+    },
+  }, t(`persona_${role}`));
+  const bar = h('div', { id: 'guest-bar', class: 'guest-bar' },
+    h('span', {}, t('guest_bar')),
+    h('span', { class: 'persona' }, `${t('persona')}:`, persona('worker'), persona('admin')));
+  if (existing) existing.replaceWith(bar);
+  else document.querySelector('.app-header').after(bar);
 }
 
 const DECISION_KEYS = ['worked', 'light_duty', 'rested'];
@@ -869,31 +979,59 @@ function addForm(fields, submit) {
   }, h('div', { class: 'submit-row' }, ...kids, h('button', { class: 'btn', type: 'submit' }, t('add'))));
 }
 
+async function issueInvite(workerId) {
+  try {
+    const r = await api(`/api/workers/${encodeURIComponent(workerId)}/invite`, { method: 'POST', body: {} });
+    const dlg = h('dialog', { class: 'decision-dialog' },
+      h('h2', {}, t('invite_done')),
+      h('p', {}, h('code', { class: 'invite-code' }, r.code)),
+      h('p', { class: 'muted small' }, `${workerId} · ${r.expiresAt.slice(0, 10)}`),
+      h('div', { class: 'dialog-actions' },
+        h('button', { class: 'btn secondary', type: 'button', onclick: async () => {
+          try { await navigator.clipboard.writeText(r.code); toast(t('copied'), 'ok'); } catch { }
+        } }, t('copy')),
+        h('button', { class: 'btn', type: 'button', onclick: () => { dlg.close(); dlg.remove(); route(); } }, 'OK')));
+    document.body.append(dlg);
+    dlg.showModal();
+  } catch (e) {
+    if (String(e.message) === 'unauthorized') return;
+    toast((e.body && e.body.error) || t('req_fail'), 'err');
+  }
+}
+
 function workersSection(r) {
+  const sandbox = Boolean(state.me && state.me.guest);
   const rows = r.workers.map((w) => {
     return h('tr', {},
       h('td', {}, w.name), h('td', { class: 'mono small' }, w.id),
       h('td', {}, w.assignedRing || '—'),
-      h('td', { class: 'feed-actions' }, delBtn(`/api/workers/${w.id}`)));
+      h('td', {}, w.walletBound ? t('wallet_bound') : t('wallet_none')),
+      h('td', { class: 'feed-actions' }, sandbox ? null : [
+        h('button', { class: 'btn secondary sm', type: 'button', onclick: () => issueInvite(w.id) }, t('invite_btn')),
+        w.walletBound && h('button', { class: 'btn secondary sm', type: 'button',
+          onclick: () => { if (confirm(t('revoke_confirm'))) adminMut('DELETE', `/api/workers/${w.id}/wallet`, undefined, 'updated'); } }, t('revoke')),
+        delBtn(`/api/workers/${w.id}`),
+      ]));
   });
-  const form = addForm([
+  const form = sandbox ? null : addForm([
     { name: 'name', label: t('name'), required: true },
     { name: 'id', label: 'id', ph: 'auto' },
   ], (i) => adminMut('POST', '/api/workers', { id: i.id.value || undefined, name: i.name.value }, 'added'));
-  return crudSection('d_workers', [t('name'), 'ID', t('ring'), ''], rows, form);
+  return crudSection('d_workers', [t('name'), 'ID', t('ring'), t('wallet_col'), ''], rows, form);
 }
 
 function ringsSection(r) {
+  const sandbox = Boolean(state.me && state.me.guest);
   const rows = r.rings.map((ring) => {
-    const wsel = h('select', {}, [opt('', t('unset')), ...r.workers.map((w) => opt(w.id, `${w.id} - ${w.name}`))]);
+    const wsel = h('select', { disabled: sandbox }, [opt('', t('unset')), ...r.workers.map((w) => opt(w.id, `${w.id} - ${w.name}`))]);
     wsel.value = ring.workerId || '';
     wsel.addEventListener('change', () => adminMut('PATCH', `/api/rings/${ring.id}`, { workerId: wsel.value || null }, 'updated'));
     return h('tr', {},
       h('td', {}, ring.label),
       h('td', {}, wsel), h('td', {}, ring.status), h('td', {}, String(ring.submissionCount)),
-      h('td', { class: 'feed-actions' }, delBtn(`/api/rings/${ring.id}`)));
+      h('td', { class: 'feed-actions' }, sandbox ? null : delBtn(`/api/rings/${ring.id}`)));
   });
-  const form = addForm([
+  const form = sandbox ? null : addForm([
     { name: 'label', label: t('name'), required: true },
     { name: 'id', label: 'id', ph: 'auto' },
   ], (i) => adminMut('POST', '/api/rings', { id: i.id.value || undefined, label: i.label.value }, 'added'));
@@ -1003,6 +1141,7 @@ function renderChrome() {
   logout.textContent = t('logout');
   logout.hidden = !state.token;
   document.getElementById('net-label').textContent = state.cfg.network || '';
+  guestBar();
 
   const nav = document.getElementById('nav');
   if (state.me) {

@@ -15,7 +15,7 @@ import {
 } from '@midnight-demo/db';
 
 import { dayStartFromDate, reasonRequired } from './decisions.js';
-import { handleApi } from './routes.js';
+import { handleApi, TEST_ADMIN_KEY_HASH } from './test-support.js';
 
 const SALT = new Uint8Array(16).fill(0x5a);
 const DAY = '2026-08-16';
@@ -92,7 +92,7 @@ test('a danger day rejects "worked" without a reason and records the band from t
   assert.equal(d.band, 'danger');
   assert.equal(d.entryKey, 'k-1');
   assert.equal(d.date, DAY);
-  assert.equal(d.decidedBy, 'admin');
+  assert.equal(d.decidedBy, TEST_ADMIN_KEY_HASH);
   assert.equal(d.current, true);
 });
 

@@ -5,8 +5,8 @@
 > current repository.**
 >
 > **Hackathon build** — everything runs locally; there is no cloud deployment
-> target. Two roles (admin / worker), a single worksite, and the login token is
-> the worker's id.
+> target. Two roles (admin / worker), a single worksite, and login is a Midnight
+> wallet signature (or a guest sandbox).
 >
 > [日本語版](ja/worksite_condition_system.md)
 
@@ -79,7 +79,7 @@ are handled as `round(value × 100)` (0–10000), so the thresholds are 6000 / 4
      │ libSQL / SQLite         │                        │
      │  rings /                │        ┌───────────────▼───────────────┐
      │  ring_worker_map /      │        │ read API (apps/gateway)        │
-     │  workers / worker_pii / │◀──────▶│  token auth → resolve scope →  │
+     │  workers / worker_pii / │◀──────▶│  session auth → resolve scope →│
      │  condition_readings /   │        │  compute entryKeys →           │
      │  submissions            │        │  read the bands                │
      └────────────────────────┘        └───────────────┬───────────────┘
@@ -96,7 +96,7 @@ are handled as `round(value × 100)` (0–10000), so the thresholds are 6000 / 4
 | Partner company | The computed value is correct. Each value is Ed25519-signed by the partner and verified off-chain when SADAKO pulls it; the circuit does not check the signature yet |
 | Admin (server / DB owner) | The onboarding root — creates rings and workers and pairs them. Trusted to keep the roster right and to submit the partner's value **unmodified**. The chain guarantees no-tampering-after-submission and non-repudiation, not source authenticity at submission time |
 | Worker attribution | **An operator claim, not a cryptographic binding.** The chain carries only `entryKey` + band + commitment; which ring or worker an entry belongs to comes from the operator's DB |
-| Login tokens | A demo shape: the token *is* the worker id, with `admin` as the one fixed string. No passwords, no sessions. Production would replace this with OIDC |
+| Login | A wallet signature over a one-time challenge. The admin list is operator configuration, and a worker's binding comes from an invite the admin issued — so who a wallet is remains an operator claim. Guest entry, when enabled, lets anyone into a sandbox |
 | Salt holder | Can brute-force a ring's history. The salt is disclosed at audit time (`salt_epochs` records each generation's hash so a rotation stays verifiable) |
 | Band disclosure | Pseudonymous and world-readable. The raw 0–100 never appears |
 
@@ -169,21 +169,38 @@ Docker. This is the only mode where `submissions` rows carry a real `tx_id` /
 
 Two roles, and no scope machinery — there is only one worksite.
 
-| Role | enum | Token | Sees |
+| Role | enum | Logs in with | Sees |
 |---|---|---|---|
-| 管理者 admin | `admin` | `admin` | Every worker's band history, the Data admin screen, chain reconciliation |
-| ユーザー worker | `worker` | their worker id | Their own history only — **including the raw 0–100 value** |
+| 管理者 admin | `admin` | a Midnight wallet whose key hash is in `ADMIN_WALLET_KEY_HASHES` | Every worker's band history, the Data admin screen, chain reconciliation, work decisions |
+| ユーザー worker | `worker` | a Midnight wallet bound to them with a one-time invite code | Their own history only — **including the raw 0–100 value** |
 
-**Authentication is the token itself** (`apps/gateway/src/auth.ts`):
+**Login is a wallet signature** (Lace, DApp Connector 4.x `signData`; the same scheme
+BACCHIRI runs on preprod):
 
 ```
-Authorization: Bearer <token>
-   token === 'admin'       → admin
-   otherwise               → looked up as workers.id; that worker, or 401
+POST /api/auth/challenge {inviteCode?}   → { challengeId, message }   (one-time, 5 minutes)
+   message = SADAKO-LOGIN-V1 \n origin \n challengeId \n nonce \n issuedAt [\n invite:<sha256 of the code>]
+wallet.signData(message, { encoding: 'text', keyType: 'unshielded' })
+POST /api/auth/verify {challengeId, data, signature, verifyingKey}
+   data === message,
+   schnorr.verify(signature, sha256('midnight_signed_message:<bytes>:' + message), verifyingKey)
+     (the connector-spec prefix Lace adds since lace-extension 2.4.0; @noble/curves, no WASM)
+   keyHash = sha256(verifyingKey)
+   keyHash ∈ ADMIN_WALLET_KEY_HASHES → admin
+   an active wallet_bindings row      → that worker   (the invite creates it)
+   otherwise                          → 403 unregistered, with the keyHash to register
+→ session v1.<payload>.<HMAC-SHA256 under SESSION_SECRET>, 12 hours, sent as Bearer
 ```
 
-There is no users table and no `role_assignments`. This is deliberately minimal
-for a demo; production would swap it for OIDC / sessions.
+`authenticate()` (`apps/gateway/src/auth.ts`) checks the MAC and expiry on every
+request, and that the admin's key hash is still configured or the worker's binding is
+still active — revoking a binding ends its sessions. Signing costs no fee and does not
+depend on the network the wallet is connected to.
+
+**Guest entry** (`GUEST_ENTRY=1`) is a wallet-free sandbox for evaluators: a fresh
+worker and ring per guest, a 2-hour session that can switch between the worker and
+admin personas, no roster changes, submissions limited to the guest's own ring and to
+`GUEST_SUBMISSION_LIMIT` per guest and `GUEST_HOURLY_LIMIT` per hour across guests.
 
 **Only the worker sees their own raw value.** The admin does not —
 `attachOwnConditionValues` in `apps/gateway/src/routes.ts` runs only when
@@ -244,7 +261,7 @@ worker_pii        (worker_id, name)
   device-pairing concept.
 - `ring_worker_map` says who is wearing it. One ring : one worker : one day.
 - `workers` holds only identifiers; names are split into `worker_pii`.
-- `workers.id` doubles as the login token.
+- A worker logs in with a wallet bound through `wallet_bindings` (one active binding per key and per worker); `worker_invites` holds only code hashes; `auth_challenges` holds one-time login challenges; `guest_sessions` holds sandbox guests.
 
 #### Conditions
 
@@ -473,7 +490,7 @@ The chain does not know who may read (bands are world-readable). The read API
 Authorization: Bearer <token>
         │
         ▼
-authenticate()          token → Viewer{role, workerId} (admin is a fixed string)
+authenticate()          session → Viewer{role, workerId} (MAC, expiry, binding)
         │
         ▼
 resolveRingScope()      admin  → every ring
@@ -524,8 +541,10 @@ The Data admin screen's **Submission queue** is the UI for `/api/staged*` and
 | List — filter by range and worker, work-decision, entryKey and tx columns, CSV export (with the decision and reason), verify | ● | — |
 | Data admin — rings and workers CRUD, the submission queue (pull from partner, submit to chain, tamper option) | ● | — |
 
-- Login is a pasted token: a worker uses their own id (`worker-1`), staff use
-  `admin`.
+- Login is **Lace で接続してログイン** (with an invite code the first time for a
+  worker), or **ゲストとして試す** when guest entry is on; a guest bar switches
+  between the worker and admin personas. The Data admin screen issues invite codes
+  (shown once) and unlinks wallets.
 - The ring sync card sends from the browser to the partner (`PUBLIC_PARTNER_URL`),
   never through SADAKO: the value reaches SADAKO only when the admin pulls. The
   gateway adds the partner origin to the CSP `connect-src`.
@@ -639,5 +658,6 @@ The only required setting is `INGESTER_SALT_HEX` in `.env` (hex, ≥16 bytes). C
   distinguish "on site but not wearing the ring" from "not working".
 - **Multiple worksites** — one site is assumed. Supporting several would mean
   reintroducing a sites table and ring/worker site assignment.
-- **Authentication** — token-as-worker-id is a demo shortcut: anyone who types
-  another worker's id reads as them. Production needs OIDC / sessions.
+- **Authentication** — wallet login proves control of a key, not who the person is;
+  the binding is the admin's invite. Rate limiting of `/api/auth/*` arrives with the
+  hosted Worker (phase 6).

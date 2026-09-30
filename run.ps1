@@ -61,6 +61,7 @@ $PreprodProof   = 'mn-condition-preprod-proof'
 $ProofImage     = 'midnightntwrk/proof-server:8.1.0'
 $PartnerDataVolume = 'mn-condition-partner-data'
 $PartnerEnvFile    = '.state/partner-mock/dev.env'
+$GatewaySecretFile = '.state/gateway/session-secret'
 
 $CompactcUrl = 'https://github.com/midnightntwrk/compact/releases/download/compactc-v0.31.1/compactc_v0.31.1_x86_64-unknown-linux-musl.zip'
 $CompactcSha = 'e291b4bab4d4e857707008f8b1c25c2b8e0c843f6c737d0ee6c0d9ac69a6bbfb'
@@ -386,6 +387,9 @@ exec npm run --silent serve -w @midnight-demo/gateway
     '-e', "DEVELOPMENT_PRIVATE_STATE_PASSWORD=$psp"
     '-e', 'PARTNER_URL=http://mn-condition-partner:8788'
     '-e', 'PUBLIC_PARTNER_URL=http://localhost:8788'
+    '-e', "SESSION_SECRET=$(Gateway-SessionSecret)"
+    '-e', "GUEST_ENTRY=$(if ($env:GUEST_ENTRY) { $env:GUEST_ENTRY } else { '1' })"
+    '-e', "WALLET_NETWORK_ID=$(if ($env:WALLET_NETWORK_ID) { $env:WALLET_NETWORK_ID } else { 'preprod' })"
     '-e', "PARTNER_API_KEY=$(Partner-EnvValue 'PARTNER_API_KEY')"
     '-e', "PARTNER_PUBLIC_KEY=$(Partner-EnvValue 'PARTNER_PUBLIC_KEY')"
   )
@@ -422,6 +426,17 @@ function Partner-DevEnv {
   if ($LASTEXITCODE -ne 0) { Fail 'partner mock keygen failed' }
   [IO.File]::WriteAllLines($file, [string[]]$lines)
   Write-Host "generated partner mock dev keys ($PartnerEnvFile)"
+}
+
+function Gateway-SessionSecret {
+  $file = Join-Path $Root $GatewaySecretFile
+  if (-not ((Test-Path $file) -and (Get-Item $file).Length -gt 0)) {
+    New-Item -ItemType Directory -Force -Path (Split-Path $file) | Out-Null
+    $bytes = New-Object byte[] 32
+    [Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($bytes)
+    [IO.File]::WriteAllText($file, (-join ($bytes | ForEach-Object { $_.ToString('x2') })))
+  }
+  (Get-Content -Raw $file).Trim()
 }
 
 function Partner-EnvValue([string]$name) {

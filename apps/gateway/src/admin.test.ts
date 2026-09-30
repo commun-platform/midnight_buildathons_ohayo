@@ -15,7 +15,7 @@ import { handlePartner } from '@midnight-demo/partner-mock/handler';
 import { loadPartnerMigrations } from '@midnight-demo/partner-mock/migrations';
 import { generatePartnerKeys, partnerSigner } from '@midnight-demo/partner-mock/signing';
 
-import { handleApi } from './routes.js';
+import { handleApi, TEST_ADMIN_KEY_HASH } from './test-support.js';
 
 const SALT = new Uint8Array(16).fill(0x5a);
 const ADMIN = 'admin';
@@ -134,7 +134,11 @@ test('admin queue submit passes the tamper option through and is admin-only', as
   assert.equal((await body(await call(POST('/api/staged/submit', {}, ADMIN)))).tampered, 0);
   assert.equal((await body(await call(POST('/api/staged/submit', { tamper: true }, ADMIN)))).tampered, 1);
   assert.equal((await body(await call(POST('/api/staged/submit', { tamper: 'yes' }, ADMIN)))).tampered, 0);
-  assert.deepEqual(seen, [{ tamper: false }, { tamper: true }, { tamper: false }]);
+  assert.deepEqual(seen, [
+    { tamper: false, submittedBy: TEST_ADMIN_KEY_HASH },
+    { tamper: true, submittedBy: TEST_ADMIN_KEY_HASH },
+    { tamper: false, submittedBy: TEST_ADMIN_KEY_HASH },
+  ]);
 });
 
 async function partnerPeer() {

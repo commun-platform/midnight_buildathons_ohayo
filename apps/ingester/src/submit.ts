@@ -7,6 +7,9 @@ import { loadRoster, submissionInserts, submissionRecord, submittedEntryKeys } f
 
 export interface SubmitQueueOptions {
   tamper?: boolean;
+  ringIds?: readonly string[];
+  limit?: number;
+  submittedBy?: string;
 }
 
 export interface SubmittedStagedFeed {
@@ -51,10 +54,17 @@ export function crossBandValue(value: number): number {
   return bandSampleValue(wrongBand(classifyCondition(value)));
 }
 
-export async function queuedReadings(db: SqlDatabase): Promise<QueuedReading[]> {
+export async function queuedReadings(
+  db: SqlDatabase,
+  ringIds?: readonly string[],
+): Promise<QueuedReading[]> {
+  if (ringIds && ringIds.length === 0) return [];
   const rows = await db.all<{ id: number; ring_id: string; recorded_at: string; value: number }>(
     `SELECT id, ring_id, recorded_at, value FROM condition_readings
-      WHERE status IN ('pending', 'queued', 'failed') ORDER BY id`,
+      WHERE status IN ('pending', 'queued', 'failed')
+        ${ringIds ? `AND ring_id IN (${ringIds.map(() => '?').join(', ')})` : ''}
+      ORDER BY id`,
+    ringIds ? [...ringIds] : [],
   );
   return rows.map((row) => ({
     id: Number(row.id),
@@ -68,6 +78,7 @@ export async function recordOutcomes(
   db: SqlDatabase,
   readings: readonly QueuedReading[],
   outcomes: readonly ReadingOutcome[],
+  submittedBy?: string,
 ): Promise<RecordedOutcomes> {
   if (outcomes.length !== readings.length) {
     throw new Error(`the chain returned ${outcomes.length} outcomes for ${readings.length} readings`);
@@ -95,7 +106,7 @@ export async function recordOutcomes(
     const storedBand = recovered ? submission.band : classifyCondition(reading.value);
     if (storedBand !== submission.band) result.tampered += 1;
     await db.batch([
-      ...submissionInserts([submissionRecord(submission, tx, storedBand, new Date().toISOString())]),
+      ...submissionInserts([submissionRecord(submission, tx, storedBand, new Date().toISOString(), submittedBy)]),
       {
         sql: "UPDATE condition_readings SET status = 'submitted', skip_reason = NULL, last_error = NULL WHERE id = ?",
         parameters: [reading.id],
@@ -112,7 +123,8 @@ export async function submitStagedFeed(
   salt: Uint8Array,
   options: SubmitQueueOptions = {},
 ): Promise<SubmittedStagedFeed> {
-  const readings = await queuedReadings(db);
+  const queued = await queuedReadings(db, options.ringIds);
+  const readings = options.limit === undefined ? queued : queued.slice(0, Math.max(0, options.limit));
   if (readings.length === 0) return { submitted: 0, skipped: 0, failed: 0, tampered: 0, reconcile: null };
   const outcomes = await chain.submitReadings({
     readings: readings.map(({ ringId, recordedAt, value }) => ({
@@ -124,7 +136,7 @@ export async function submitStagedFeed(
     submittedEntryKeys: await submittedEntryKeys(db),
     salt,
   });
-  const { submitted, skipped, failed, tampered } = await recordOutcomes(db, readings, outcomes);
+  const { submitted, skipped, failed, tampered } = await recordOutcomes(db, readings, outcomes, options.submittedBy);
   if (submitted.length === 0 || tampered > 0) {
     return { submitted: submitted.length, skipped, failed, tampered, reconcile: null };
   }

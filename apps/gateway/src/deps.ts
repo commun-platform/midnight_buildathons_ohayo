@@ -1,6 +1,8 @@
 import type { ConditionReader } from '@midnight-demo/condition-read';
 import type { SqlDatabase } from '@midnight-demo/db';
 import type { PartnerConfig } from '@midnight-demo/ingester/partner';
+
+import type { AuthConfig } from './auth.js';
 import { hexToBytes } from '@midnight-demo/shared';
 
 export type ReconcileFn = (entryKeys: readonly string[]) => Promise<{
@@ -11,7 +13,14 @@ export type ReconcileFn = (entryKeys: readonly string[]) => Promise<{
   missing: number;
 }>;
 
-export type SubmitStagedFn = (options: { tamper?: boolean }) => Promise<{
+export interface SubmitStagedOptions {
+  tamper?: boolean;
+  ringIds?: readonly string[];
+  limit?: number;
+  submittedBy?: string;
+}
+
+export type SubmitStagedFn = (options: SubmitStagedOptions) => Promise<{
   submitted: number;
   skipped: number;
   failed: number;
@@ -28,6 +37,7 @@ export interface GatewayDeps {
   submitStaged?: SubmitStagedFn;
   partner?: PartnerConfig;
   fetch?: typeof fetch;
+  auth?: AuthConfig;
 }
 
 export function saltFromHex(hex: string | undefined): Uint8Array {

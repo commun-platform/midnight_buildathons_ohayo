@@ -24,6 +24,7 @@ import {
   type ReconcileFn,
   type SubmitStagedFn,
 } from './deps.js';
+import { authConfigFromEnv } from './auth.js';
 import { handleApi } from './routes.js';
 import { securityHeaders } from './security.js';
 
@@ -67,6 +68,7 @@ function makeDeps(): GatewayDeps {
       partnerUrl: env.PUBLIC_PARTNER_URL?.trim() || env.PARTNER_URL?.trim() || undefined,
     },
     partner: partnerFromEnv(env),
+    auth: authConfigFromEnv(env),
   };
 }
 

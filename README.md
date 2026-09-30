@@ -76,16 +76,16 @@ the genesis seed, compiles and deploys the contract, and serves the dashboard
 joined to it. The dashboard always runs against a real deployed contract — there
 is no offline/sample-data mode.
 
-Then open <http://localhost:8787> and paste one of these into the **ID** field:
+Then open <http://localhost:8787> and log in:
 
-| ID | Role | Sees |
+| How | Role | Sees |
 |---|---|---|
-| `admin` | 管理者 admin | every worker, plus the Data admin screen and chain reconciliation |
-| `worker-1` | ユーザー worker | their own history — **including the raw 0–100 value** |
+| **Lace で接続してログイン** with a wallet whose key hash is in `ADMIN_WALLET_KEY_HASHES` | 管理者 admin | every worker, plus the Data admin screen and chain reconciliation |
+| the same button, with the invite code the admin issued (first time only) | ユーザー worker | their own history — **including the raw 0–100 value** |
+| **ゲストとして試す** (on by default locally; `GUEST_ENTRY=0` turns it off) | a sandbox worker, switchable to admin | their own worker and ring |
 
-The login token is just the worker's id — `worker-1`, `worker-2`, … — with
-`admin` as the one fixed staff token. No user table, no passwords: this is a
-demo, and the point is the privacy model, not the login.
+Login signs a one-time challenge with the wallet (no fee); the first attempt with an
+unregistered wallet shows its key hash for `ADMIN_WALLET_KEY_HASHES`.
 
 The roster starts empty — create a ring and a worker (id `worker-1`) from
 データ管理 as `admin` and assign the ring. Log in as `worker-1` and send a score
@@ -110,7 +110,7 @@ port that drives Docker directly, no Git Bash or WSL.
 
 | Lane | What it covers |
 |---|---|
-| `./run.sh test` | 90 unit tests + `tsc --noEmit` across the seven SDK-free workspaces |
+| `./run.sh test` | 101 unit tests + `tsc --noEmit` across the seven SDK-free workspaces |
 | `./run.sh test_sdk` | typecheck + tests for the Midnight-SDK workspaces |
 | `./run.sh test_contract` | compiles `condition-registry` with Compact 0.31.1 and runs 15 ZK-circuit tests in the simulator |
 | `./run.sh db` | the ingester end-to-end against a real libSQL server container |

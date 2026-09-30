@@ -7,8 +7,8 @@ SADAKO records a partner-computed **0–100 worker condition value** on the Midn
 `condition-registry` contract. The raw value stays private (committed as a ZK
 witness); only the three-state band `正常` / `要注意` / `危険` is disclosed
 on-chain, keyed by a salted hash of the ring id and the day. A role-scoped read
-API serves the band history back. One worksite, two roles, and the login token
-is simply the worker's id.
+API serves the band history back. One worksite, two roles, and login is a
+Midnight wallet signature — or, locally, a guest sandbox.
 
 Design: [`docs/worksite_condition_system.md`](../../../docs/worksite_condition_system.md)
 ([日本語](../../../docs/ja/worksite_condition_system.md)).
@@ -76,8 +76,13 @@ the admin never enters a score:
 
 ### The two roles — show them in this order
 
-Tokens are trivial: **`worker-1` is the worker's own id**, and `admin` is the one
-fixed staff token. No user table, no passwords.
+Login is **Lace で接続してログイン** (the admin's key hash must be in
+`ADMIN_WALLET_KEY_HASHES` — the first attempt shows it; a worker enters the invite
+code issued from データ管理 once). Without Lace, press **ゲストとして試す**:
+`run.sh e2e` enables guest entry locally (`GUEST_ENTRY=0` to require Lace). A guest
+gets their own worker and ring and switches between 作業員 and 管理者 in the yellow
+sandbox bar; the guest admin cannot edit the roster and submits only their own ring,
+at most 3 times.
 
 **1. `worker-1` — ユーザー (worker).** The point of the whole system.
 
@@ -151,7 +156,7 @@ company under investigation.*
 ## Verification lanes
 
 ```bash
-bash ./run.sh test           # 90 unit tests + typecheck, SDK-free — the fast gate
+bash ./run.sh test           # 101 unit tests + typecheck, SDK-free — the fast gate
 bash ./run.sh test_sdk       # typecheck + tests for the Midnight-SDK workspaces
 bash ./run.sh test_contract  # compile with Compact 0.31.1 + 15 ZK-circuit tests
 bash ./run.sh test_all       # the three above, stops on first failure
@@ -191,9 +196,11 @@ Read these before editing anything here.
 - **Two roles, no scope machinery.** `admin` (管理者 — every worker, plus the
   Data admin screen), `worker` (ユーザー — themselves, and the only role that
   sees the raw 0–100 value).
-- **Auth is the token.** `admin` is a fixed string in `apps/gateway/src/auth.ts`;
-  any other token is looked up as a `workers.id`. There is no users table and no
-  `role_assignments`.
+- **Login is a wallet signature.** `apps/gateway/src/login.ts` (challenge → Lace
+  `signData` → BIP-340 verify → HMAC session). Admins by key hash
+  (`ADMIN_WALLET_KEY_HASHES`), workers by invite-code binding, guests only with
+  `GUEST_ENTRY=1`. There is no token shortcut in production code; tests mint
+  sessions with `apps/gateway/src/test-support.ts`.
 - **There is no site.** One worksite is assumed. The day boundary comes from
   `APP_TIME_ZONE` in `packages/shared/src/period.ts`.
 - **The dashboard always runs on-chain.** There is no offline/sample-data mode

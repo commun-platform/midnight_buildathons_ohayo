@@ -42,6 +42,7 @@ export interface SubmissionRecord {
   txHash?: string | null;
   blockHeight?: string;
   submittedAt: string;
+  submittedBy?: string;
 }
 
 export interface TransactionSummary {

@@ -48,6 +48,7 @@ PREPROD_PROOF=mn-condition-preprod-proof
 PROOF_SERVER_IMAGE=midnightntwrk/proof-server:8.1.0
 PARTNER_DATA_VOLUME=mn-condition-partner-data
 PARTNER_ENV_FILE=.state/partner-mock/dev.env
+GATEWAY_SECRET_FILE=.state/gateway/session-secret
 
 # Compact toolchain 0.31.1 (language 0.23.0) - the version pinned in .compact-version.
 # A versioned release artifact (not `curl | sh`); the sha256 is checked before use.
@@ -142,6 +143,15 @@ partner_dev_env() {
     "$IMAGE" npx --no-install tsx apps/partner-mock/src/cli.ts keygen > "$file.tmp"
   mv "$file.tmp" "$file"
   echo "generated partner mock dev keys ($PARTNER_ENV_FILE)"
+}
+
+gateway_session_secret() {
+  local file="$ROOT/$GATEWAY_SECRET_FILE"
+  if [ ! -s "$file" ]; then
+    mkdir -p "$(dirname "$file")"
+    (umask 077; openssl rand -hex 32 > "$file")
+  fi
+  tr -d '[:space:]' < "$file"
 }
 
 partner_env_value() {
@@ -538,6 +548,9 @@ lane_dashboard() {
     -e DEVELOPMENT_PRIVATE_STATE_PASSWORD="${DEVELOPMENT_PRIVATE_STATE_PASSWORD:-Aa1!worksite-condition-devnet}" \
     -e PARTNER_URL=http://mn-condition-partner:8788 \
     -e PUBLIC_PARTNER_URL=http://localhost:8788 \
+    -e SESSION_SECRET="$(gateway_session_secret)" \
+    -e GUEST_ENTRY="${GUEST_ENTRY:-1}" \
+    -e WALLET_NETWORK_ID="${WALLET_NETWORK_ID:-preprod}" \
     -e PARTNER_API_KEY="$(partner_env_value PARTNER_API_KEY)" \
     -e PARTNER_PUBLIC_KEY="$(partner_env_value PARTNER_PUBLIC_KEY)" \
     "$IMAGE" bash -c "

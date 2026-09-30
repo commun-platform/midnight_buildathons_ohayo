@@ -10,6 +10,7 @@ import type { SqlDatabase } from '@midnight-demo/db';
 import { handleAdmin } from './admin.js';
 import { authenticate } from './auth.js';
 import { handleDecisions } from './decisions.js';
+import { handleAuth } from './login.js';
 import type { GatewayDeps } from './deps.js';
 
 export type { GatewayDeps } from './deps.js';
@@ -88,7 +89,7 @@ export async function handleRead(request: Request, deps: GatewayDeps): Promise<R
   if (!url.pathname.startsWith('/api/conditions/')) return null;
   if (request.method !== 'GET') return json(405, { error: 'Method not allowed' });
 
-  const viewer = await authenticate(deps.db, request);
+  const viewer = await authenticate(deps, request);
   if (!viewer) return json(401, { error: 'Unauthorized' });
 
   const [, , kind, id] = url.pathname.split('/').filter(Boolean);
@@ -129,11 +130,14 @@ function handleConfig(deps: GatewayDeps): Response {
     submitEnabled: Boolean(deps.submitStaged),
     partnerPullEnabled: Boolean(deps.partner),
     partnerUrl: deps.config?.partnerUrl ?? null,
+    loginEnabled: Boolean(deps.auth),
+    guestEntry: Boolean(deps.auth?.guestEntry),
+    walletNetworkId: deps.auth?.walletNetworkId ?? null,
   });
 }
 
 async function handleMe(request: Request, deps: GatewayDeps): Promise<Response> {
-  const viewer = await authenticate(deps.db, request);
+  const viewer = await authenticate(deps, request);
   if (!viewer) return json(401, { error: 'Unauthorized' });
 
   const worker = viewer.workerId
@@ -154,11 +158,12 @@ async function handleMe(request: Request, deps: GatewayDeps): Promise<Response> 
     workerId: viewer.workerId ?? null,
     workerName: worker?.name ?? null,
     ringId: ring?.ring_id ?? null,
+    guest: Boolean(viewer.guestId),
   });
 }
 
 async function handleReconcile(request: Request, deps: GatewayDeps): Promise<Response> {
-  const viewer = await authenticate(deps.db, request);
+  const viewer = await authenticate(deps, request);
   if (!viewer) return json(401, { error: 'Unauthorized' });
 
   let body: { entryKeys?: unknown };
@@ -197,6 +202,9 @@ async function handleReconcile(request: Request, deps: GatewayDeps): Promise<Res
 export async function handleApi(request: Request, deps: GatewayDeps): Promise<Response | null> {
   const url = new URL(request.url);
   if (!url.pathname.startsWith('/api/')) return null;
+
+  const login = await handleAuth(request, deps);
+  if (login) return login;
 
   const admin = await handleAdmin(request, deps);
   if (admin) return admin;

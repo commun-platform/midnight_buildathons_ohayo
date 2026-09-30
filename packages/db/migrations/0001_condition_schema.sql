@@ -120,3 +120,38 @@ CREATE UNIQUE INDEX work_decisions_one_successor ON work_decisions (supersedes_i
 
 CREATE TRIGGER work_decisions_no_update BEFORE UPDATE ON work_decisions BEGIN SELECT RAISE(ABORT, 'work_decisions is append-only'); END;
 CREATE TRIGGER work_decisions_no_delete BEFORE DELETE ON work_decisions BEGIN SELECT RAISE(ABORT, 'work_decisions is append-only'); END;
+
+CREATE TABLE wallet_bindings (
+  id         TEXT PRIMARY KEY,
+  key_hash   TEXT NOT NULL,
+  worker_id  TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  revoked_at TEXT
+);
+
+CREATE UNIQUE INDEX wallet_bindings_active_key ON wallet_bindings (key_hash) WHERE revoked_at IS NULL;
+CREATE UNIQUE INDEX wallet_bindings_active_worker ON wallet_bindings (worker_id) WHERE revoked_at IS NULL;
+
+CREATE TABLE worker_invites (
+  code_hash  TEXT PRIMARY KEY,
+  worker_id  TEXT NOT NULL,
+  expires_at TEXT NOT NULL,
+  used_at    TEXT,
+  created_by TEXT NOT NULL
+);
+
+CREATE TABLE auth_challenges (
+  id          TEXT PRIMARY KEY,
+  message     TEXT NOT NULL,
+  invite_hash TEXT,
+  expires_at  TEXT NOT NULL,
+  used_at     TEXT
+);
+
+CREATE TABLE guest_sessions (
+  id         TEXT PRIMARY KEY,
+  worker_id  TEXT NOT NULL,
+  ring_id    TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  expires_at TEXT NOT NULL
+);

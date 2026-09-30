@@ -14,7 +14,7 @@ is no cloud deployment target. It separates runtime responsibilities:
 - `contracts/condition-registry/`: worksite condition contract (`submitCondition`), witnesses, and simulator tests. Toolchain pinned by `.compact-version` (0.31.1).
 - `packages/db/`: `SqlDatabase` with a libSQL adapter and a Cloudflare D1 adapter (`@midnight-demo/db/d1`, ported from the BACCHIRI `D1SqlDatabase`), condition-system schema + migrations + the opt-in `sample-roster.sql` / `sample-feed.sql` fixtures. Used by the ingester and the gateway.
 - `packages/shared/`: condition band vocabulary, `conditionEntryKey` (WebCrypto), timezone math, hex utils, and unit tests — all Worker-safe. `conditionScoreCommitment` (`persistentCommit`, Compact-runtime WASM) is only under `@midnight-demo/shared/commitment`.
-- `apps/dashboard/public/`: framework-free SPA (`index.html` + `app.js` + `styles.css`, no build). Paste-token login (the token is the worker's id, or `admin`), role-scoped worker list, per-worker band history (day strip + table), CSV export, ja/en. Served by `npm run dashboard:dev` (= `gateway serve`) together with `/api/*` same-origin. Data: `/api/config`, `/api/me`, `/api/conditions/*`.
+- `apps/dashboard/public/`: framework-free SPA (`index.html` + `app.js` + `styles.css`, no build). Lace wallet login (or guest entry), role-scoped worker list, per-worker band history, the worker's ring sync card, the admin's submission queue and work decisions, CSV export, ja/en. Served by `npm run dashboard:dev` (= `gateway serve`) together with `/api/*` same-origin. Data: `/api/config`, `/api/auth/*`, `/api/me`, `/api/conditions/*`, `/api/decisions`, and the admin routes.
 - `docs/`: canonical English guidance; Japanese translations live in `docs/ja/`. `docs/worksite_condition_system.md` is the current spec.
 
 Generated `dist/`, `.state/`, `data/`, and `contracts/condition-registry/src/managed/` content is gitignored. Do not hand-edit generated Compact artifacts.
@@ -26,9 +26,14 @@ concept. `admin` (管理者 — every worker, the Data admin screen, chain
 reconciliation, and the append-only work decisions in `work_decisions`) and `worker` (ユーザー — their own history, including the raw
 0–100 value nobody else sees).
 
-Authentication is the bearer token itself (`apps/gateway/src/auth.ts`): `admin`
-is a fixed string, anything else is looked up as a `workers.id`. There is no
-users table and no `role_assignments`. The day boundary comes from
+Login is a Midnight wallet signature (`apps/gateway/src/login.ts`): a one-time
+challenge signed with Lace `signData`, verified with `@noble/curves` BIP-340, then an
+HMAC session (`SESSION_SECRET`, 12 hours). The admin is any wallet whose key hash is
+in `ADMIN_WALLET_KEY_HASHES`; a worker is bound to a wallet with a one-time invite code
+(`wallet_bindings`). `GUEST_ENTRY=1` adds a wallet-free sandbox (own worker and ring,
+persona switch, no roster changes, capped submissions). There is no users table and
+no `role_assignments`. Tests mint sessions through `apps/gateway/src/test-support.ts`;
+production code has no token shortcut. The day boundary comes from
 `APP_TIME_ZONE` in `packages/shared/src/period.ts`.
 
 ## Build, Test, and Development Commands

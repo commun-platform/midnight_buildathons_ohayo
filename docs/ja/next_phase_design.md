@@ -54,7 +54,7 @@
 |---|---|
 | 「すべてローカルで動作し、クラウドのデプロイ先はない」（`AGENTS.md`、仕様書、`SKILL.md`） | フェーズ 6 |
 | 「libSQL のみ。D1 も Cloudflare も使わない」（`SKILL.md`） | フェーズ 0（D1 アダプタ — 完了、`SKILL.md` 更新済み）、フェーズ 6（ホスティング） |
-| 「認証はトークンそのもの」（`AGENTS.md`、仕様書 §3、`SKILL.md`） | フェーズ 5 |
+| 「認証はトークンそのもの」（`AGENTS.md`、仕様書 §3、`SKILL.md`） | フェーズ 5 — 完了 |
 | 「スキーマ変更は `0001_condition_schema.sql` に直接入れる」（`SKILL.md`） | フェーズ 6 までは維持。以降は番号付き migration（§4.3） |
 | 2 回押しの照合（`SKILL.md`、仕様書 §7.4） | フェーズ 7（§9.8）。改ざんのチェックボックスはそのまま残す |
 
@@ -320,13 +320,34 @@ SPA                                    Worker
   ダッシュボードにログインできる。テストは `@noble/curves` で生成した鍵で署名する。
 
 ```
-wallet_bindings (key_hash TEXT PRIMARY KEY, worker_id TEXT NOT NULL UNIQUE,
+wallet_bindings (id TEXT PRIMARY KEY, key_hash TEXT NOT NULL, worker_id TEXT NOT NULL,
                  created_at TEXT NOT NULL, revoked_at TEXT)
+                 -- revoked_at IS NULL の行の中で key_hash と worker_id はそれぞれ一意
 worker_invites  (code_hash TEXT PRIMARY KEY, worker_id TEXT NOT NULL,
                  expires_at TEXT NOT NULL, used_at TEXT, created_by TEXT NOT NULL)
-auth_challenges (id TEXT PRIMARY KEY, message TEXT NOT NULL,
+auth_challenges (id TEXT PRIMARY KEY, message TEXT NOT NULL, invite_hash TEXT,
                  expires_at TEXT NOT NULL, used_at TEXT)
 ```
+
+フェーズ 5 での実装（`apps/gateway/src/{login,auth,session,wallet-signature}.ts`）:
+
+- メッセージには招待コードそのものではなく `invite:<コードの sha256>` を入れる。チャレンジと
+  一緒に平文のコードを保存しないため（`auth_challenges.invite_hash`）。
+- `wallet_bindings` は独自の id と部分一意インデックスを持つ。解除した紐付けの後に、同じ
+  ウォレットや作業員を新しく紐付け直せる。
+- 鍵ハッシュは verifyingKey の文字列の SHA-256（BACCHIRI の `walletKeySha256` と同じ）。
+  SHA-256 は WebCrypto で計算し、追加した依存は `@noble/curves` 1.9.7 だけ（ルートに既にあった）。
+- 署名されるバイト列は `midnight_signed_message:<バイト長>:` + メッセージ。DApp Connector の
+  仕様でこの接頭辞は必須（MUST）で、Lace は lace-extension 2.4.0（2026-09-23、`sign-message-prefix.ts`）
+  から付けている。BACCHIRI の固定コミットの検証はそれより前のもので、接頭辞なしのメッセージを
+  検証するため、今の Lace の署名とは一致しない。
+- チャレンジは署名を検証する前に使用済みにする。失敗した試行を同じチャレンジでやり直せない。
+- セッションは状態を持たない。`authenticate()` が毎回、管理者の鍵の一覧と作業員の紐付けを
+  確認し直すので、ウォレット連携を解除するとそのセッションは使えなくなる。
+- `run.sh e2e` はローカル用の `SESSION_SECRET` を `.state/gateway/session-secret` に作り、
+  ゲスト入場を有効にする（Lace を必須にするなら `GUEST_ENTRY=0`）。未登録のウォレットで初めて
+  Lace ログインすると、`ADMIN_WALLET_KEY_HASHES` に設定する鍵ハッシュが表示される。
+- `/api/auth/*` のレート制限は Workers の `ratelimits` バインディングに任せる（フェーズ 6）。
 
 ---
 
@@ -519,10 +540,15 @@ BACCHIRI の `docs/submission/deliverables_plan.md` では、Midnight Buildathon
   仮名なので害はない。
 
 ```
-guest_sessions (id TEXT PRIMARY KEY, worker_id TEXT, ring_id TEXT,
-                submissions INTEGER NOT NULL DEFAULT 0,
+guest_sessions (id TEXT PRIMARY KEY, worker_id TEXT NOT NULL, ring_id TEXT NOT NULL,
                 created_at TEXT NOT NULL, expires_at TEXT NOT NULL)
 ```
+
+フェーズ 5 での実装: ゲストは作業員の役で始まる。ゲストの管理者はロスターを一切変更できず
+（ゲストの作業員とリングは入場時に作る）、削除と送信は自分のリングの値だけ、判断の記録と照合は
+どこでもできる。送信回数はカウンタ列ではなく `submissions.submitted_by`（`guest:<id>`）から数える。
+ゲストあたり `GUEST_SUBMISSION_LIMIT`（既定 3）、全ゲスト合計で 1 時間あたり
+`GUEST_HOURLY_LIMIT`（既定 30）。送信のときは残りの回数を `limit` として渡し、使い切ると 429 を返す。
 
 ### 9.5 公開検証ページ — `/verify`
 
@@ -653,7 +679,7 @@ Cloudflare Containers の公開料金（2026-09-30 確認、
 | 2 | ユーザー画面からの送信（機能 2） | `apps/dashboard/public/app.js`、`apps/gateway/src/routes.ts` | ユーザー画面から送った値が、取得と送信を経てチェーンに届く（ローカル devnet） | 完了（2026-09-30）— リング同期 → 取得 → 送信 → 照合済みの tx をローカル devnet で確認 |
 | 3 | 就業判断（機能 7） | `apps/gateway`、`apps/dashboard/public/app.js`、`0001_condition_schema.sql` | 理由必須のルールと、追記のみの挙動をテスト済み | 完了（2026-09-30）— ローカル devnet の画面でも、理由なしの拒否・記録・訂正を確認 |
 | 4 | preprod へのデプロイと手順書（機能 4） | `docs/deploy_preprod.md`、`docs/ja/deploy_preprod.md`、`run.sh`、`run.ps1` | 手順書だけを見て preprod にデプロイできる | 完了（2026-09-30）— 手順書に書いたレーンでデプロイし、その実行結果を手順書に記録した |
-| 5 | ウォレットログインとゲスト入場（機能 5、8） | `apps/gateway/src/auth.ts`、`apps/dashboard/public/`、テスト | トークンログインを廃止。チャレンジの再利用、期限切れ、鍵の不一致、招待コードの再利用が拒否され、ゲストの制限が効くことをテスト済み | 未着手 |
+| 5 | ウォレットログインとゲスト入場（機能 5、8） | `apps/gateway/src/auth.ts`、`apps/dashboard/public/`、テスト | トークンログインを廃止。チャレンジの再利用、期限切れ、鍵の不一致、招待コードの再利用が拒否され、ゲストの制限が効くことをテスト済み | 完了（2026-09-30）— ゲストの流れはローカル devnet の画面で確認。接続仕様の `midnight_signed_message:` 接頭辞に対応したうえで、実物の Lace ウォレットでの管理者ログインにも成功 |
 | 6 | Worker + D1 + Container（機能 6） | `apps/gateway/src/worker.ts`、`wrangler.jsonc`、Container イメージ、チェックポイントの移植（§0.2） | 開発ホストを止めた状態で、workers.dev 上で一連の流れが動く。§9.10 用のメモリを実測済み | 未着手 |
 | 7 | 評価レイヤー: 公開検証、開示レシート、デモガイド、照合と改ざんの UX、ショーケース投入、審査用プロファイル（機能 9〜12） | `apps/gateway`、`apps/dashboard/public/`、`apps/development/condition-cli` | ゲストが workers.dev 上でゴールデンパスを 5 分で終えられる | 未着手 |
 | 8 | 提出用資料と動画（§9.11） | `docs/submission/`、`docs/ja/submission/`、`README.md` | Evidence Matrix のすべての主張が、ソース・テスト・tx のいずれかにたどり着ける | 未着手 |

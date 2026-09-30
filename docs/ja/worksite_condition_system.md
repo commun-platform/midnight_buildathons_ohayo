@@ -5,7 +5,7 @@
 >
 > **ハッカソン構成** — すべてローカルで動作する。クラウドデプロイ先は無い。
 > ロールは 管理者 / ユーザー の 2 種。現場は 1 か所を前提とし、
-> 認証はトークン＝作業員ID。
+> ログインは Midnight ウォレットの署名（またはゲスト用サンドボックス）。
 
 ---
 
@@ -76,7 +76,7 @@ Midnight のゼロ知識証明が「生値を隠したままバンドの導出�
      │ libSQL / SQLite         │                        │
      │  rings /                │        ┌───────────────▼───────────────┐
      │  ring_worker_map /      │        │ 読み取り API（apps/gateway）    │
-     │  workers / worker_pii / │◀──────▶│  トークン認証 → スコープ判定 → │
+     │  workers / worker_pii / │◀──────▶│  セッション認証 → スコープ判定 →│
      │  condition_readings /   │        │  対象リングの entryKey 計算 →  │
      │  submissions            │        │  band を取得                   │
      └────────────────────────┘        └───────────────┬───────────────┘
@@ -93,7 +93,7 @@ Midnight のゼロ知識証明が「生値を隠したままバンドの導出�
 | 別会社 | 算出値が正しいことを前提とする。値には別会社の Ed25519 署名が付き、SADAKO が取得するときにオフチェーンで検証する。回路ではまだ検証しない |
 | 管理者（サーバー / DB オーナー） | オンボーディングの起点 — リングと作業員を作り、両者を紐づける。ロスターを正しく維持し、別会社の値を**改変せず**提出すると信頼する。チェーンが保証するのは「提出後の改ざん不可」「否認不可」であって、提出時点のソース認証ではない |
 | 作業員の帰属 | **運営者の主張であって暗号的な束縛ではない**。チェーンに載るのは `entryKey` ＋ band ＋ commitment のみ。どのリング・作業員のエントリかは運営者の DB 由来 |
-| ログイントークン | デモ構成。トークン＝作業員ID、`admin` のみ固定文字列。パスワードもセッションも無い。本番では OIDC 等に置き換える前提 |
+| ログイン | 一度限りのチャレンジへのウォレット署名。管理者の一覧は運用者の設定、作業員の紐付けは管理者が発行した招待コードによるので、ウォレットが誰のものかは運用者の主張にとどまる。ゲスト入場を有効にすると、誰でもサンドボックスに入れる |
 | salt 保有者 | リング履歴を総当たりできる。監査時に salt を開示（`salt_epochs` が各世代のハッシュを記録するのでローテーション後も検証可能） |
 | band の公開 | 擬似匿名で world-readable。生の 0–100 は出ない |
 
@@ -166,21 +166,37 @@ Docker で起動する。`submissions` 行に実際の `tx_id` / `tx_hash` / `bl
 
 ロールは 2 種のみ。スコープの概念は持たない（現場が 1 か所だから）。
 
-| ロール | enum | トークン | 見えるもの |
+| ロール | enum | ログイン方法 | 見えるもの |
 |---|---|---|---|
-| 管理者 | `admin` | `admin` | 全作業員の band 履歴、データ管理画面、チェーン照合 |
-| ユーザー | `worker` | 作業員ID | 自分の履歴のみ。**生の 0〜100 の値も見える** |
+| 管理者 | `admin` | 鍵ハッシュが `ADMIN_WALLET_KEY_HASHES` にある Midnight ウォレット | 全作業員の band 履歴、データ管理画面、チェーン照合、就業判断 |
+| ユーザー | `worker` | 一度限りの招待コードで本人に紐付けた Midnight ウォレット | 自分の履歴のみ。**生の 0〜100 の値も見える** |
 
-**認証はトークンそのもの**（`apps/gateway/src/auth.ts`）:
+**ログインはウォレットの署名**（Lace、DApp Connector 4.x の `signData`。BACCHIRI が preprod で
+使っている方式と同じ）:
 
 ```
-Authorization: Bearer <token>
-   token === 'admin'       → 管理者
-   それ以外                → workers.id と照合。一致すればその作業員、しなければ 401
+POST /api/auth/challenge {inviteCode?}   → { challengeId, message }   （一度限り、5 分）
+   message = SADAKO-LOGIN-V1 \n origin \n challengeId \n nonce \n issuedAt [\n invite:<コードの sha256>]
+wallet.signData(message, { encoding: 'text', keyType: 'unshielded' })
+POST /api/auth/verify {challengeId, data, signature, verifyingKey}
+   data === message、
+   schnorr.verify(signature, sha256('midnight_signed_message:<バイト長>:' + message), verifyingKey)
+     （lace-extension 2.4.0 から Lace が付ける、接続仕様の接頭辞。@noble/curves、WASM 不要）
+   keyHash = sha256(verifyingKey)
+   keyHash ∈ ADMIN_WALLET_KEY_HASHES → 管理者
+   有効な wallet_bindings の行         → その作業員（招待コードで作られる）
+   どちらでもない                      → 403 unregistered（登録用に keyHash を返す）
+→ セッション v1.<payload>.<SESSION_SECRET による HMAC-SHA256>、12 時間、Bearer で送る
 ```
 
-ユーザーテーブルも `role_assignments` も無い。デモとして意図的に最小化した設計で、
-本番では OIDC / セッションに差し替える前提。
+`authenticate()`（`apps/gateway/src/auth.ts`）は毎回、MAC と有効期限に加えて、管理者の鍵ハッシュが
+まだ設定にあるか、作業員の紐付けがまだ有効かを確認する。紐付けを解除すると、そのセッションは使えなく
+なる。署名に手数料はかからず、ウォレットが接続しているネットワークにも依存しない。
+
+**ゲスト入場**（`GUEST_ENTRY=1`）は、ウォレットを持たない評価者向けのサンドボックス。ゲストごとに新しい
+作業員とリングを作り、2 時間有効のセッションで作業員と管理者の役を切り替えられる。ロスターは変更できず、
+チェーンへの送信は自分のリングの値だけ、ゲストあたり `GUEST_SUBMISSION_LIMIT` 回、全ゲスト合計で
+1 時間あたり `GUEST_HOURLY_LIMIT` 回まで。
 
 **生値を見られるのは本人だけ。** 管理者もバンドしか見えない
 （`apps/gateway/src/routes.ts` の `attachOwnConditionValues` は
@@ -239,7 +255,7 @@ worker_pii        (worker_id, name)
   リング表示名で、シリアルやデバイス紐付けといった別概念は持たない。
 - `ring_worker_map` が「誰が着けているか」。1 リング : 1 作業員 : 1 日。
 - `workers` は識別子だけを持ち、氏名は `worker_pii` に分離する。
-- `workers.id` がそのままログイントークンになる。
+- 作業員は `wallet_bindings` で紐付けたウォレットでログインする（有効な紐付けは鍵ごと・作業員ごとに 1 つ）。`worker_invites` は招待コードのハッシュだけを、`auth_challenges` は一度限りのログインチャレンジを、`guest_sessions` はサンドボックスのゲストを持つ。
 
 #### コンディション
 
@@ -460,7 +476,7 @@ skip の種類は 3 つ:
 Authorization: Bearer <token>
         │
         ▼
-authenticate()          トークン → Viewer{role, workerId}（admin は固定文字列）
+authenticate()          セッション → Viewer{role, workerId}（MAC・期限・紐付けを確認）
         │
         ▼
 resolveRingScope()      admin  → 全リング
@@ -511,8 +527,9 @@ JSON                    { range, rings: [{ ringId, timezone,
 | 一覧 — 期間・作業員で絞り込み、就業判断・entryKey・tx の列、CSV 書き出し（判断と理由を含む）、照合 | ● | — |
 | データ管理 — リング・作業員の CRUD、送信キュー（別会社から取得・チェーンへ送信・改ざんオプション） | ● | — |
 
-- ログインはトークンの貼り付け。作業員は自分の ID（`worker-1` など）、
-  職員は `admin`。
+- ログインは **Lace で接続してログイン**（作業員は初回だけ招待コードを入れる）。ゲスト入場が
+  有効なら **ゲストとして試す** もある。ゲスト用のバーで作業員と管理者の役を切り替えられる。
+  データ管理画面で招待コードの発行（一度だけ表示）とウォレット連携の解除ができる。
 - リング同期カードは、ブラウザから別会社（`PUBLIC_PARTNER_URL`）へ直接送る。SADAKO は経由
   しない。値が SADAKO に届くのは管理者が取得したとき。gateway は CSP の `connect-src` に
   別会社のオリジンを加える。
@@ -621,5 +638,5 @@ Docker だけあればよい。
   「出勤したが未装着」と「非稼働」の区別は現構成では付けない。
 - **複数現場** — 現在は 1 現場前提。複数現場を扱うには現場テーブルと、リング／
   作業員の現場割当を再導入する必要がある。
-- **認証** — トークン＝作業員IDはデモ用。誰でも他人の ID を入力すれば本人として
-  読めてしまうので、本番では OIDC / セッションが必須。
+- **認証** — ウォレットログインが証明するのは鍵を持っていることで、本人であることではない。
+  紐付けは管理者の招待による。`/api/auth/*` のレート制限はホスト版の Worker（フェーズ 6）で入れる。

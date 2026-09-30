@@ -15,7 +15,7 @@ import {
 } from '@midnight-demo/db';
 import { conditionEntryKey } from '@midnight-demo/shared';
 
-import { handleApi, handleRead } from './routes.js';
+import { handleApi, handleRead } from './test-support.js';
 
 const SALT = new Uint8Array(16).fill(0x5a);
 const AUG16_JST = Date.parse('2026-08-16T00:00:00+09:00');
@@ -188,6 +188,9 @@ test('handleApi: /api/config is unauthenticated display strings', async () => {
     submitEnabled: false,
     partnerPullEnabled: false,
     partnerUrl: null,
+    loginEnabled: true,
+    guestEntry: false,
+    walletNetworkId: 'preprod',
   });
 });
 

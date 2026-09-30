@@ -215,7 +215,7 @@ async function createDecision(db: SqlDatabase, request: Request, actor: string):
 }
 
 export async function handleDecisions(request: Request, deps: GatewayDeps): Promise<Response> {
-  const viewer = await authenticate(deps.db, request);
+  const viewer = await authenticate(deps, request);
   if (!viewer) return json(401, { error: 'Unauthorized' });
   const url = new URL(request.url);
 
@@ -229,7 +229,7 @@ export async function handleDecisions(request: Request, deps: GatewayDeps): Prom
   }
   if (request.method === 'POST') {
     if (viewer.role !== 'admin') return json(403, { error: 'Forbidden — admin only' });
-    return createDecision(deps.db, request, 'admin');
+    return createDecision(deps.db, request, viewer.subject);
   }
   return json(405, { error: 'Method not allowed — decisions are append-only' });
 }

@@ -20,6 +20,7 @@
     "@midnight-demo/ingester": "*",
     "@midnight-demo/ingester-core": "*",
     "@midnight-demo/shared": "*",
+    "@noble/curves": "1.9.7",
     "dotenv": "^17.2.1"
   },
   "devDependencies": {

@@ -9,6 +9,7 @@ const repoRoot = fileURLToPath(new URL('../../../', import.meta.url));
 const WORKER_ENTRIES = [
   'apps/gateway/src/routes.ts',
   'apps/gateway/src/deps.ts',
+  'apps/gateway/src/decisions.ts',
   'apps/gateway/src/security.ts',
   'apps/ingester/src/partner.ts',
   'apps/ingester/src/store.ts',

@@ -651,7 +651,7 @@ Cloudflare Containers の公開料金（2026-09-30 確認、
 | 0 | リファクタ: WASM 分離、チェーンと DB の分離、D1 アダプタ（§8.4） | `packages/shared`、`packages/midnight-chain`、`packages/db`、`apps/gateway/src/deps.ts` | `run.sh` のテストレーンがすべて通る。Worker の依存関係に `compact-runtime` がないことを境界テストで確認 | 完了（2026-09-30） |
 | 1 | partner mock、取得、キューの UI（機能 1、3） | `apps/partner-mock/`、`apps/ingester/src/partner.ts`、`apps/gateway/src/admin.ts`、`apps/dashboard/public/app.js`、`0001_condition_schema.sql` | 取得が冪等。署名不正・衝突・未登録リングのケースをテスト済み | 完了（2026-09-30）— ローカル devnet でも、取得 → キュー → 3 件の tx の送信と照合まで確認 |
 | 2 | ユーザー画面からの送信（機能 2） | `apps/dashboard/public/app.js`、`apps/gateway/src/routes.ts` | ユーザー画面から送った値が、取得と送信を経てチェーンに届く（ローカル devnet） | 完了（2026-09-30）— リング同期 → 取得 → 送信 → 照合済みの tx をローカル devnet で確認 |
-| 3 | 就業判断（機能 7） | `apps/gateway`、`apps/dashboard/public/app.js`、`0001_condition_schema.sql` | 理由必須のルールと、追記のみの挙動をテスト済み | 未着手 |
+| 3 | 就業判断（機能 7） | `apps/gateway`、`apps/dashboard/public/app.js`、`0001_condition_schema.sql` | 理由必須のルールと、追記のみの挙動をテスト済み | 完了（2026-09-30）— ローカル devnet の画面でも、理由なしの拒否・記録・訂正を確認 |
 | 4 | preprod へのデプロイと手順書（機能 4） | `docs/deploy_preprod.md`、`docs/ja/deploy_preprod.md`、`run.sh`、`run.ps1` | 手順書だけを見て preprod にデプロイできる | 完了（2026-09-30）— 手順書に書いたレーンでデプロイし、その実行結果を手順書に記録した |
 | 5 | ウォレットログインとゲスト入場（機能 5、8） | `apps/gateway/src/auth.ts`、`apps/dashboard/public/`、テスト | トークンログインを廃止。チャレンジの再利用、期限切れ、鍵の不一致、招待コードの再利用が拒否され、ゲストの制限が効くことをテスト済み | 未着手 |
 | 6 | Worker + D1 + Container（機能 6） | `apps/gateway/src/worker.ts`、`wrangler.jsonc`、Container イメージ、チェックポイントの移植（§0.2） | 開発ホストを止めた状態で、workers.dev 上で一連の流れが動く。§9.10 用のメモリを実測済み | 未着手 |

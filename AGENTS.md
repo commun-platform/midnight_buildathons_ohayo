@@ -22,8 +22,8 @@ Generated `dist/`, `.state/`, `data/`, and `contracts/condition-registry/src/man
 ## Roles
 
 Two roles, no scope machinery — one worksite is assumed and there is no site
-concept. `admin` (管理者 — every worker, the Data admin screen, and chain
-reconciliation) and `worker` (ユーザー — their own history, including the raw
+concept. `admin` (管理者 — every worker, the Data admin screen, chain
+reconciliation, and the append-only work decisions in `work_decisions`) and `worker` (ユーザー — their own history, including the raw
 0–100 value nobody else sees).
 
 Authentication is the bearer token itself (`apps/gateway/src/auth.ts`): `admin`

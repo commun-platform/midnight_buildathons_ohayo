@@ -176,6 +176,21 @@ p.muted { color: var(--muted); margin: 0.3rem 0 1rem; }
 .ring-sync .submit-row input[type='number'] { width: 8rem; }
 .crud-section .submit-tamper { margin: 0 0 0.85rem; }
 .sync-result { margin: 0.75rem 0 0; }
+.chip.decision { font-size: 0.78rem; cursor: default; }
+button.chip.decision { cursor: pointer; font: inherit; font-size: 0.78rem; }
+.chip.dec-none { color: var(--band-caution); background: var(--band-caution-bg); border-style: dashed; }
+.chip.dec-worked, .chip.dec-light_duty { color: var(--accent); background: var(--accent-weak); }
+.chip.dec-rested { color: var(--muted); background: var(--bg); border-color: var(--border); }
+.decision-block { margin-top: 0.2rem; }
+.self-decision { display: flex; gap: 0.6rem; align-items: center; justify-content: center; margin-top: 0.6rem; flex-wrap: wrap; }
+.decision-dialog { border: 1px solid var(--border); border-radius: 12px; padding: 1.2rem 1.4rem; max-width: 30rem; width: calc(100% - 2rem); background: var(--surface); color: inherit; }
+.decision-dialog::backdrop { background: rgb(0 0 0 / 35%); }
+.decision-dialog h2 { margin: 0 0 0.5rem; }
+.dec-opts { display: flex; gap: 1rem; margin: 0.8rem 0; flex-wrap: wrap; }
+.dec-opt { display: flex; gap: 0.35rem; align-items: center; }
+.dec-reason { display: block; font-size: 0.85rem; color: var(--muted); }
+.dec-reason textarea { display: block; width: 100%; margin-top: 0.25rem; font: inherit; }
+.dialog-actions { display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 0.8rem; }
 .queue-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; margin: 0.25rem 0 0.85rem; }
 .chip.big { padding: 0.2rem 0.8rem; font-size: 0.95rem; }
 .chip.huge { padding: 0.4rem 1.4rem; font-size: 1.4rem; border-radius: 12px; }

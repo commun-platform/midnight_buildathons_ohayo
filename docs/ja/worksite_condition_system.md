@@ -256,6 +256,8 @@ submissions          (entry_key, ring_id, period_start_ms, timezone, recorded_at
 salt_epochs          (id, salt_hash, from_ms, to_ms?, created_at)
 contract_deployments (id, network, address, deployed_at, active)
 audit_log            (id, actor_user_id?, action, target_table, target_id, before_json?, after_json?, ts)
+work_decisions       (id, worker_id, period_start_ms, entry_key?, band?, decision, reason,
+                      decided_by, decided_at, supersedes_id?)
 ```
 
 - `condition_readings` は別会社フィードの着地点で、送信キューを兼ねる。
@@ -274,6 +276,13 @@ audit_log            (id, actor_user_id?, action, target_table, target_id, befor
   読み取り API はこのテーブルから band を返す（チェーンに毎回問い合わせない）。
 - `chain_verified_at` はチェーンから読み戻して一致を確認した時刻。
   `reconcileSubmissions` が刻む。ダッシュボードの「⚠ 未照合 / ✓ 照合済み」表示の根拠。
+- `work_decisions` は、管理者がその日に作業員を就業させた理由を記録する
+  （`worked` / `light_duty` / `rested`）。**追記のみ**: トリガーで `UPDATE` と `DELETE` を拒否し、
+  訂正は現在の判断を `supersedes_id` で指す新しい行として加える（部分一意インデックスで、
+  作業員・日ごとの起点は 1 行、各行の後継も 1 行に限る）。書き込みのたびに `audit_log` にも
+  記録する。その日の `band` と `entry_key` はサーバが `submissions` から写し取る。`caution` /
+  `danger` の日に `worked` / `light_duty` とするには理由が必要。判断は**チェーンに載らず**、
+  改ざんを検知できない（運用者は DB を書き換えられる）。
 - `salt_epochs` は salt 世代のハッシュだけを保持する。**生の salt は DB に入れない。**
 
 #### タイムゾーンの持ち方
@@ -474,6 +483,8 @@ JSON                    { range, rings: [{ ringId, timezone,
 |---|---|---|
 | `GET /api/config` | 認証不要 | 表示用の文字列（ネットワーク名、Explorer URL、submit 可否） |
 | `GET /api/me` | 全ロール | 呼び出し元のロール・氏名・現在の `ringId` |
+| `GET /api/decisions?from=&to=[&workerId=][&history=1]` | 管理者（全員）、作業員（本人のみ） | 現在の就業判断（`history=1` で置き換えられたものも含む） |
+| `POST /api/decisions` | 管理者 | 就業判断を追記 `{ workerId, date, decision, reason?, supersedesId? }`。理由不足は 400 `reason_required`、`supersedesId` が現在の判断でなければ 409 `stale` |
 | `GET /api/conditions/mine` | 全ロール | 自分のスコープ全体の band 履歴 |
 | `GET /api/conditions/all` | 管理者 | 全リング |
 | `GET /api/conditions/worker/:id` | 管理者・本人 | その作業員のリング |
@@ -495,9 +506,9 @@ JSON                    { range, rings: [{ ringId, timezone,
 
 | 画面 | 管理者 | ユーザー |
 |---|:-:|:-:|
-| 本日 — 作業員カード（当日バンド） | ● | — |
-| 本日（本人）— 当日のバンド＋**生値**、月別の記録表、スコアを別会社へ直接送る**リング同期**カード | — | ● |
-| 一覧 — 期間・作業員で絞り込み、entryKey / tx 表示、CSV 書き出し、照合 | ● | — |
+| 本日 — 作業員カード（当日バンド）。要注意・危険の日は就業判断を記録するまで「判断未記入」を表示 | ● | — |
+| 本日（本人）— 当日のバンド＋**生値**、就業判断と理由（読み取り専用）、月別の記録表、スコアを別会社へ直接送る**リング同期**カード | — | ● |
+| 一覧 — 期間・作業員で絞り込み、就業判断・entryKey・tx の列、CSV 書き出し（判断と理由を含む）、照合 | ● | — |
 | データ管理 — リング・作業員の CRUD、送信キュー（別会社から取得・チェーンへ送信・改ざんオプション） | ● | — |
 
 - ログインはトークンの貼り付け。作業員は自分の ID（`worker-1` など）、
@@ -544,6 +555,7 @@ DB とチェーンを意図的に食い違わせ、照合ボタンで検知さ�
 | 氏名 | — | ○（`worker_pii`） | ○ | ○ |
 | リング ID | — | ○ | ○ | ○ |
 | salt | — | ハッシュのみ | 開示可 | — |
+| 就業判断と理由 | — | ○（`work_decisions`） | ○ | ○（本人の分） |
 
 **チェーン単体からは個人が特定できない。** 載っているのは salt 付きハッシュの
 `entryKey` と、そのバンド・コミットメント・時刻だけ。salt を持たない第三者には、
@@ -601,6 +613,8 @@ Docker だけあればよい。
 - **回路内での別会社署名の検証** — 値には別会社の Ed25519 署名が付き、取得時に検証する
   ので、偽造・改変された値はキューに入らない。ただし運営者はチェーンに別の値を送れる。
   署名を回路内で検証すれば、運営者を信頼の前提から外せる。
+- **就業判断の改ざん検知** — 判断は DB にだけ記録される。判断ごとのコミットメントを
+  チェーンに刻めば、書き換えられた判断を検知できる。
 - **salt ローテーション** — `salt_epochs` のスキーマは用意してあるが、
   ローテーション手順は未実装。
 - **欠測の扱い** — 記録の無い日は「エントリ無し」とだけ分かる。

@@ -106,7 +106,7 @@ Git Bash も WSL も不要な、Docker を直接叩くネイティブ移植版�
 
 | レーン | 内容 |
 |---|---|
-| `./run.sh test` | SDK フリー 7 ワークスペースのユニットテスト 83 件 ＋ `tsc --noEmit` |
+| `./run.sh test` | SDK フリー 7 ワークスペースのユニットテスト 90 件 ＋ `tsc --noEmit` |
 | `./run.sh test_sdk` | Midnight SDK ワークスペースの typecheck ＋ テスト |
 | `./run.sh test_contract` | Compact 0.31.1 で `condition-registry` をコンパイルし、シミュレータで ZK 回路テスト 15 件 |
 | `./run.sh db` | 実 libSQL サーバーコンテナに対する ingester の end-to-end |

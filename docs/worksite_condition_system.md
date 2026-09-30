@@ -261,6 +261,8 @@ submissions          (entry_key, ring_id, period_start_ms, timezone, recorded_at
 salt_epochs          (id, salt_hash, from_ms, to_ms?, created_at)
 contract_deployments (id, network, address, deployed_at, active)
 audit_log            (id, actor_user_id?, action, target_table, target_id, before_json?, after_json?, ts)
+work_decisions       (id, worker_id, period_start_ms, entry_key?, band?, decision, reason,
+                      decided_by, decided_at, supersedes_id?)
 ```
 
 - `condition_readings` is where the partner feed lands and the submission queue.
@@ -283,6 +285,14 @@ audit_log            (id, actor_user_id?, action, target_table, target_id, befor
 - `chain_verified_at` is stamped by `reconcileSubmissions` once the row has been
   read back from the chain and agrees. It drives the dashboard's
   "⚠ pending / ✓ verified" indicator.
+- `work_decisions` records why an admin let a worker work on a given day
+  (`worked` / `light_duty` / `rested`). It is **append-only**: triggers reject
+  `UPDATE` and `DELETE`, a correction is a new row whose `supersedes_id` points at the
+  current one (partial unique indexes allow one root per worker-day and one successor
+  per row), and every write also lands in `audit_log`. The server snapshots the day's
+  `band` and `entry_key` from `submissions`; on a `caution` / `danger` day, `worked`
+  and `light_duty` need a reason. Decisions are **not on chain** and not
+  tamper-evident: the operator can rewrite the database.
 - `salt_epochs` stores only each generation's **hash**. The live salt is never in
   the DB.
 
@@ -486,6 +496,8 @@ itself and can only read what the server hands it.
 |---|---|---|
 | `GET /api/config` | no auth | display strings (network name, explorer URL, submit and partner-pull availability) |
 | `GET /api/me` | any | the caller's role, name and current `ringId` |
+| `GET /api/decisions?from=&to=[&workerId=][&history=1]` | admin (any worker), worker (self only) | current work decisions (with `history=1`, superseded ones too) |
+| `POST /api/decisions` | admin | append a work decision `{ workerId, date, decision, reason?, supersedesId? }`; 400 `reason_required`, 409 `stale` when `supersedesId` is not the current decision |
 | `GET /api/conditions/mine` | any | the caller's whole resolved scope |
 | `GET /api/conditions/all` | admin | every ring |
 | `GET /api/conditions/worker/:id` | admin, self | that worker's rings |
@@ -507,9 +519,9 @@ The Data admin screen's **Submission queue** is the UI for `/api/staged*` and
 
 | Screen | admin | worker |
 |---|:-:|:-:|
-| Today — a worker card per person with the day's band | ● | — |
-| Today (self) — the day's band **plus the raw value**, a month table, and the **ring sync** card that posts a score straight to the partner | — | ● |
-| List — filter by range and worker, entryKey / tx columns, CSV export, verify | ● | — |
+| Today — a worker card per person with the day's band; caution / danger days show 「判断未記入」 until a work decision is recorded | ● | — |
+| Today (self) — the day's band **plus the raw value**, the work decision and reason (read-only), a month table, and the **ring sync** card that posts a score straight to the partner | — | ● |
+| List — filter by range and worker, work-decision, entryKey and tx columns, CSV export (with the decision and reason), verify | ● | — |
 | Data admin — rings and workers CRUD, the submission queue (pull from partner, submit to chain, tamper option) | ● | — |
 
 - Login is a pasted token: a worker uses their own id (`worker-1`), staff use
@@ -558,6 +570,7 @@ detection can be demonstrated.
 | Name | — | ○ (`worker_pii`) | ○ | ○ |
 | Ring id | — | ○ | ○ | ○ |
 | Salt | — | hash only | disclosable | — |
+| Work decision and reason | — | ○ (`work_decisions`) | ○ | ○ (own) |
 
 **The chain alone identifies nobody.** It carries a salted-hash `entryKey` with a
 band, a commitment and timestamps. Without the salt, an observer cannot even tell
@@ -618,6 +631,8 @@ The only required setting is `INGESTER_SALT_HEX` in `.env` (hex, ≥16 bytes). C
   entering the queue. The operator can still submit a different value on-chain;
   verifying the partner signature inside the circuit would remove the operator from
   the trust base.
+- **Tamper-evident work decisions** — decisions live only in the database. Anchoring
+  a commitment to each decision on chain would make a rewritten decision detectable.
 - **Salt rotation** — `salt_epochs` is in the schema, but the rotation procedure
   is not implemented.
 - **Missing days** — a day with no reading is simply absent. This build does not

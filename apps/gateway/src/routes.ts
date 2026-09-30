@@ -9,6 +9,7 @@ import type { SqlDatabase } from '@midnight-demo/db';
 
 import { handleAdmin } from './admin.js';
 import { authenticate } from './auth.js';
+import { handleDecisions } from './decisions.js';
 import type { GatewayDeps } from './deps.js';
 
 export type { GatewayDeps } from './deps.js';
@@ -199,6 +200,8 @@ export async function handleApi(request: Request, deps: GatewayDeps): Promise<Re
 
   const admin = await handleAdmin(request, deps);
   if (admin) return admin;
+
+  if (url.pathname === '/api/decisions') return handleDecisions(request, deps);
 
   if (request.method === 'POST' && url.pathname === '/api/reconcile') {
     return handleReconcile(request, deps);

@@ -96,6 +96,11 @@ fixed staff token. No user table, no passwords.
 - Open 一覧: bands, entryKey and tx columns, CSV export — but **no raw values,
   not even for the admin**.
 - データ管理 is the roster CRUD plus the submission queue (pull, submit, tamper option), admin-only. The admin cannot enter a score.
+- On a 要注意 / 危険 day the card shows **判断未記入**: click it to record the work
+  decision (就業 / 軽作業 / 休養). 就業 or 軽作業 on such a day is refused without a
+  reason. A correction appends a new row that supersedes the old one — nothing is
+  overwritten, and the worker sees the current decision and reason on their screen.
+  Decisions are DB-only (not on chain), which is stated in the dialog.
 - Say: *the admin runs the site and still cannot see anyone's score.*
 
 That contrast is the demo: **the person the data is about is the only one who can
@@ -146,7 +151,7 @@ company under investigation.*
 ## Verification lanes
 
 ```bash
-bash ./run.sh test           # 83 unit tests + typecheck, SDK-free — the fast gate
+bash ./run.sh test           # 90 unit tests + typecheck, SDK-free — the fast gate
 bash ./run.sh test_sdk       # typecheck + tests for the Midnight-SDK workspaces
 bash ./run.sh test_contract  # compile with Compact 0.31.1 + 15 ZK-circuit tests
 bash ./run.sh test_all       # the three above, stops on first failure

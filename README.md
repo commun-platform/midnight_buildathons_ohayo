@@ -110,7 +110,7 @@ port that drives Docker directly, no Git Bash or WSL.
 
 | Lane | What it covers |
 |---|---|
-| `./run.sh test` | 83 unit tests + `tsc --noEmit` across the seven SDK-free workspaces |
+| `./run.sh test` | 90 unit tests + `tsc --noEmit` across the seven SDK-free workspaces |
 | `./run.sh test_sdk` | typecheck + tests for the Midnight-SDK workspaces |
 | `./run.sh test_contract` | compiles `condition-registry` with Compact 0.31.1 and runs 15 ZK-circuit tests in the simulator |
 | `./run.sh db` | the ingester end-to-end against a real libSQL server container |

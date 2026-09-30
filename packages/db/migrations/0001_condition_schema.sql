@@ -100,3 +100,23 @@ CREATE TABLE audit_log (
 );
 
 CREATE INDEX audit_log_target ON audit_log (target_table, target_id);
+
+CREATE TABLE work_decisions (
+  id              TEXT PRIMARY KEY,
+  worker_id       TEXT NOT NULL,
+  period_start_ms INTEGER NOT NULL,
+  entry_key       TEXT,
+  band            TEXT,
+  decision        TEXT NOT NULL CHECK (decision IN ('worked', 'light_duty', 'rested')),
+  reason          TEXT NOT NULL,
+  decided_by      TEXT NOT NULL,
+  decided_at      TEXT NOT NULL,
+  supersedes_id   TEXT REFERENCES work_decisions (id)
+);
+
+CREATE INDEX work_decisions_worker_period ON work_decisions (worker_id, period_start_ms);
+CREATE UNIQUE INDEX work_decisions_one_root ON work_decisions (worker_id, period_start_ms) WHERE supersedes_id IS NULL;
+CREATE UNIQUE INDEX work_decisions_one_successor ON work_decisions (supersedes_id) WHERE supersedes_id IS NOT NULL;
+
+CREATE TRIGGER work_decisions_no_update BEFORE UPDATE ON work_decisions BEGIN SELECT RAISE(ABORT, 'work_decisions is append-only'); END;
+CREATE TRIGGER work_decisions_no_delete BEFORE DELETE ON work_decisions BEGIN SELECT RAISE(ABORT, 'work_decisions is append-only'); END;

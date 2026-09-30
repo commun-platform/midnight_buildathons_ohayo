@@ -57,6 +57,12 @@ const T = {
     sync_ok: 'パートナーへ送信しました', sync_fail: 'パートナーへの送信に失敗しました',
     sync_score: 'パートナーが受け付けたスコア', sync_after: '管理者の取得と送信の後にチェーンへ記録されます。',
     sync_hint: '0〜100 のスコアを入力して送信します。',
+    dec_h: '就業判断', dec_worked: '就業', dec_light_duty: '軽作業', dec_rested: '休養',
+    dec_none: '判断未記入', dec_reason: '理由', dec_save: '記録する', dec_cancel: 'キャンセル',
+    dec_required_hint: '要注意・危険の日に「就業」「軽作業」とする場合は、理由が必須です。',
+    dec_note: '判断は運用者の DB にだけ記録され、チェーンには載りません。訂正すると新しい行として追記されます。',
+    dec_current: '現在の判断', dec_saved: '就業判断を記録しました', dec_stale: '他の変更があったため、最新の状態を読み込み直しました',
+    dec_fail: '就業判断を記録できませんでした',
   },
   en: {
     title: 'SADAKO', language: 'Language', logout: 'Sign out',
@@ -113,6 +119,12 @@ const T = {
     sync_ok: 'Sent to the partner', sync_fail: 'Sending to the partner failed',
     sync_score: 'Score accepted by the partner', sync_after: 'It is recorded on chain after the admin pulls and submits it.',
     sync_hint: 'Enter a score from 0 to 100 and send it.',
+    dec_h: 'Work decision', dec_worked: 'worked', dec_light_duty: 'light duty', dec_rested: 'rested',
+    dec_none: 'no decision yet', dec_reason: 'Reason', dec_save: 'Record', dec_cancel: 'Cancel',
+    dec_required_hint: 'Letting someone work or do light duty on a caution or danger day needs a reason.',
+    dec_note: "Decisions live only in the operator's database, not on chain. A correction is appended as a new row.",
+    dec_current: 'Current decision', dec_saved: 'Work decision recorded', dec_stale: 'Something changed meanwhile — reloaded the latest state',
+    dec_fail: 'Could not record the work decision',
   },
 };
 
@@ -383,13 +395,85 @@ function viewLogin() {
   );
 }
 
+const DECISION_KEYS = ['worked', 'light_duty', 'rested'];
+const needsDecision = (band) => band === 'caution' || band === 'danger';
+const decisionKey = (workerId, date) => `${workerId}|${date}`;
+
+async function loadDecisions(from, to, workerId) {
+  const q = `from=${from}&to=${to}${workerId ? `&workerId=${encodeURIComponent(workerId)}` : ''}`;
+  const r = await api(`/api/decisions?${q}`).catch((e) => {
+    if (String(e.message) === 'unauthorized') throw e;
+    return { decisions: [] };
+  });
+  return new Map(r.decisions.map((d) => [decisionKey(d.workerId, d.date), d]));
+}
+
+function decisionChip(d, onclick) {
+  const label = d ? `${t('dec_h')}: ${t(`dec_${d.decision}`)}` : t('dec_none');
+  const props = { class: `chip decision ${d ? `dec-${d.decision}` : 'dec-none'}`, title: d && d.reason ? d.reason : '' };
+  if (!onclick) return h('span', props, label);
+  return h('button', { ...props, type: 'button', onclick: (ev) => { ev.stopPropagation(); onclick(); } }, label);
+}
+
+function openDecisionDialog({ workerId, who, date, band, current }) {
+  const dlg = h('dialog', { class: 'decision-dialog' });
+  const close = () => { dlg.close(); dlg.remove(); };
+  const radios = DECISION_KEYS.map((k) => {
+    const r = h('input', { type: 'radio', name: 'decision', value: k, required: true });
+    if (current && current.decision === k) r.checked = true;
+    return h('label', { class: 'dec-opt' }, r, t(`dec_${k}`));
+  });
+  const reason = h('textarea', { name: 'reason', rows: '3', maxlength: '500' });
+  reason.value = current ? current.reason : '';
+  const saveBtn = h('button', { class: 'btn', type: 'submit' }, t('dec_save'));
+  const form = h('form', {
+    onsubmit: async (ev) => {
+      ev.preventDefault();
+      const decision = new FormData(form).get('decision');
+      saveBtn.disabled = true;
+      try {
+        await api('/api/decisions', {
+          method: 'POST',
+          body: { workerId, date, decision, reason: reason.value, supersedesId: current ? current.id : null },
+        });
+        toast(t('dec_saved'), 'ok');
+        close();
+        route();
+      } catch (e) {
+        if (String(e.message) === 'unauthorized') return;
+        const body = e.body || {};
+        if (body.code === 'stale') { toast(t('dec_stale'), 'warn'); close(); route(); return; }
+        toast(body.code === 'reason_required' ? t('dec_required_hint') : body.error || t('dec_fail'), 'err');
+        saveBtn.disabled = false;
+      }
+    },
+  },
+    h('h2', {}, t('dec_h')),
+    h('p', {}, h('strong', {}, who), ' · ', date, ' ', bandChip(band)),
+    current && h('p', { class: 'muted small' }, `${t('dec_current')}: ${t(`dec_${current.decision}`)}${current.reason ? ` — ${current.reason}` : ''}`),
+    h('div', { class: 'dec-opts' }, radios),
+    h('label', { class: 'dec-reason' }, t('dec_reason'), reason),
+    needsDecision(band) && h('p', { class: 'muted small' }, t('dec_required_hint')),
+    h('p', { class: 'muted small' }, t('dec_note')),
+    h('div', { class: 'dialog-actions' },
+      h('button', { class: 'btn secondary', type: 'button', onclick: close }, t('dec_cancel')),
+      saveBtn));
+  dlg.append(form);
+  dlg.addEventListener('cancel', () => dlg.remove());
+  document.body.append(dlg);
+  dlg.showModal();
+}
+
 function todayEntry(w) {
   const today = todayYmd();
   return w.entries.find((e) => fmtDay(e.periodStartMs, w.timezone) === today) || null;
 }
 
-function workerCard(w) {
+function workerCard(w, decisions) {
   const te = todayEntry(w);
+  const today = todayYmd();
+  const current = w.workerId ? decisions.get(decisionKey(w.workerId, today)) : null;
+  const showDecision = w.workerId && (current || (te && needsDecision(te.band)));
   const target = !w.workerId
     ? ''
     : canRecords()
@@ -407,6 +491,10 @@ function workerCard(w) {
         : h('span', { class: 'chip big none' }, t('today_pending')),
       te && !te.verified && h('span', { class: 'pending' }, '⚠ ' + t('some_pending')),
     ),
+    showDecision && h('div', { class: 'decision-block' },
+      decisionChip(current, () => openDecisionDialog({
+        workerId: w.workerId, who: whoLabel(w), date: today, band: te ? te.band : null, current,
+      }))),
   );
 }
 
@@ -427,6 +515,7 @@ async function viewOverview() {
   mount(h('div', { class: 'loading' }, '…'));
   const data = await loadConditions(null, `/api/conditions/mine?from=${today}&to=${today}`);
   if (!data) return;
+  const decisions = await loadDecisions(today, today);
 
   const byWorker = new Map();
   for (const r of data.rings) {
@@ -435,7 +524,7 @@ async function viewOverview() {
     byWorker.get(key).entries.push(...r.entries);
   }
   const sections = byWorker.size
-    ? [h('div', { class: 'grid' }, [...byWorker.values()].map((w) => workerCard(w)))]
+    ? [h('div', { class: 'grid' }, [...byWorker.values()].map((w) => workerCard(w, decisions)))]
     : [h('p', { class: 'muted' }, t('no_workers'))];
 
   mount(h('h1', {}, t('overview_h')), h('p', { class: 'muted' }, today), ...sections);
@@ -522,8 +611,10 @@ async function viewWorkerSelf() {
   mount(h('div', { class: 'loading' }, '…'));
 
   let monthData;
+  let decisions;
   try {
     monthData = await api(`/api/conditions/worker/${workerId}?from=${mr.from}&to=${mr.to}`);
+    decisions = await loadDecisions(mr.from, today > mr.to ? mr.to : today);
   } catch (e) {
     if (String(e.message) === 'unauthorized') return;
     mount(banner(t('err_generic')));
@@ -539,6 +630,7 @@ async function viewWorkerSelf() {
     te = td?.rings.flatMap((r) => r.entries)[0] || null;
   }
 
+  const todayDecision = decisions.get(decisionKey(workerId, today));
   const todayCard = h('div', { class: `card self-today band-${te ? te.band : 'none'}` },
     h('div', { class: 'self-today-date' }, today),
     te
@@ -547,6 +639,9 @@ async function viewWorkerSelf() {
           showValue && te.value != null && h('span', { class: 'self-today-value' }, fmtValue(te.value)),
           !te.verified && h('span', { class: 'pending' }, '⚠ ' + t('some_pending')))
       : h('div', { class: 'self-today-body muted' }, t('today_none')),
+    todayDecision && h('div', { class: 'self-decision' },
+      decisionChip(todayDecision),
+      todayDecision.reason && h('span', { class: 'muted' }, todayDecision.reason)),
   );
 
   const [selY, selM] = ym.split('-').map(Number);
@@ -556,6 +651,10 @@ async function viewWorkerSelf() {
   const rows = entries.map((e) => h('tr', {},
     h('td', {}, fmtDay(e.periodStartMs, tz)),
     h('td', {}, bandChip(e.band)),
+    h('td', {}, (() => {
+      const d = decisions.get(decisionKey(workerId, fmtDay(e.periodStartMs, tz)));
+      return d ? h('span', {}, decisionChip(d), d.reason ? h('div', { class: 'muted small' }, d.reason) : null) : '—';
+    })()),
     showValue && h('td', { class: 'mono' }, e.value != null ? fmtValue(e.value) : '—'),
     h('td', {}, fmtTime(e.recordedAtMs, tz)),
     h('td', {}, verifiedCell(e)),
@@ -573,7 +672,7 @@ async function viewWorkerSelf() {
     entries.length
       ? h('div', { class: 'table-wrap' }, h('table', {},
           h('thead', {}, h('tr', {},
-            h('th', {}, t('day')), h('th', {}, t('band')),
+            h('th', {}, t('day')), h('th', {}, t('band')), h('th', {}, t('dec_h')),
             showValue && h('th', {}, t('value')),
             h('th', {}, t('recorded')), h('th', {}, t('verified')))),
           h('tbody', {}, rows)))
@@ -640,6 +739,7 @@ async function viewRecords() {
   if (!data) return;
 
   const isAdmin = Boolean(state.me.admin);
+  const decisions = await loadDecisions(from.slice(0, 10), to.slice(0, 10), worker || null);
   const dropLabel = (r) => isAdmin
     ? `${r.workerId} - ${r.workerName || r.workerId}`
     : (r.workerName || r.workerId);
@@ -657,9 +757,12 @@ async function viewRecords() {
   for (const r of data.rings) {
     if (worker && r.workerId !== worker) continue;
     for (const e of r.entries) {
+      const day = fmtDay(e.periodStartMs, r.timezone);
+      const d = r.workerId ? decisions.get(decisionKey(r.workerId, day)) : null;
       flat.push({
-        ring: r.ringId, worker: cellLabel(r), day: fmtDay(e.periodStartMs, r.timezone), recorded: fmtTime(e.recordedAtMs, r.timezone),
+        ring: r.ringId, worker: cellLabel(r), workerId: r.workerId, day, recorded: fmtTime(e.recordedAtMs, r.timezone),
         band: e.band, verified: e.verified, entryKey: e.entryKey, commitment: e.scoreCommitmentHex, txId: e.txId || '',
+        decisionRow: d || null, decision: d ? d.decision : '', decisionReason: d ? d.reason : '',
       });
     }
   }
@@ -688,7 +791,13 @@ async function viewRecords() {
 
   const rows = flat.map((f) => h('tr', {},
     h('td', {}, f.day), h('td', {}, f.recorded), h('td', {}, f.ring), h('td', {}, f.worker),
-    h('td', {}, bandChip(f.band)), h('td', {}, verifiedCell(f)),
+    h('td', {}, bandChip(f.band)),
+    h('td', {}, f.workerId && (f.decisionRow || needsDecision(f.band))
+      ? decisionChip(f.decisionRow, isAdmin ? () => openDecisionDialog({
+          workerId: f.workerId, who: f.worker, date: f.day, band: f.band, current: f.decisionRow,
+        }) : null)
+      : '—'),
+    h('td', {}, verifiedCell(f)),
     ellipCell(f.entryKey), ellipCell(f.txId, { href: txExplorerUrl(f.txId) })));
 
   mount(
@@ -702,14 +811,14 @@ async function viewRecords() {
       ? h('div', { class: 'table-wrap' }, h('table', {},
           h('thead', {}, h('tr', {},
             h('th', {}, t('day')), h('th', {}, t('recorded')), h('th', {}, t('ring')), h('th', {}, t('worker')),
-            h('th', {}, t('band')), h('th', {}, t('verified')), h('th', {}, t('entrykey')), h('th', {}, t('tx')))),
+            h('th', {}, t('band')), h('th', {}, t('dec_h')), h('th', {}, t('verified')), h('th', {}, t('entrykey')), h('th', {}, t('tx')))),
           h('tbody', {}, rows)))
       : h('p', { class: 'muted' }, t('no_entries')),
   );
 }
 
 function downloadCsv(rows) {
-  const head = ['day', 'recorded', 'ring', 'worker', 'band', 'verified', 'entryKey', 'commitment', 'txId'];
+  const head = ['day', 'recorded', 'ring', 'worker', 'band', 'decision', 'decisionReason', 'verified', 'entryKey', 'commitment', 'txId'];
   const esc = (v) => `"${String(v).replace(/"/g, '""')}"`;
   const csv = [head.join(','), ...rows.map((r) => head.map((k) => esc(r[k])).join(','))].join('\n');
   const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));

@@ -94,6 +94,10 @@ function deriveKeys(seed: string) {
   return derived.keys;
 }
 
+export function walletSyncDirectory(network: NetworkId, seed: string): string {
+  return path.join(stateDir, 'wallet-sync', network, walletSyncTag(seed));
+}
+
 function childStatePath(network: NetworkId, tag: string, child: ChildKind): string {
   return path.join(stateDir, 'wallet-sync', network, tag, `${child}.json`);
 }
@@ -291,8 +295,35 @@ export function walletBalances(state: Awaited<ReturnType<WalletContext['wallet']
   };
 }
 
+export async function waitForDustSync(context: WalletContext, timeoutMs: number): Promise<void> {
+  let lastProgressLog = 0;
+  await Rx.firstValueFrom(
+    context.wallet.state().pipe(
+      Rx.tap((next) => {
+        const now = Date.now();
+        if (now - lastProgressLog < 30_000) return;
+        lastProgressLog = now;
+        const { appliedIndex, highestRelevantWalletIndex } = next.dust.progress;
+        const percent = highestRelevantWalletIndex > 0n
+          ? ` (${(appliedIndex * 100n) / highestRelevantWalletIndex}%)`
+          : '';
+        process.stdout.write(
+          `DUST wallet sync: ${appliedIndex} of ${highestRelevantWalletIndex || '?'}${percent}\n`,
+        );
+      }),
+      Rx.filter((next) => next.dust.progress.isStrictlyComplete()),
+      Rx.timeout({
+        first: timeoutMs,
+        with: () => Rx.throwError(() => new Error(`DUST wallet sync timed out after ${timeoutMs}ms`)),
+      }),
+    ),
+  );
+}
+
 export async function ensureDust(context: WalletContext, faucet: string): Promise<void> {
   const dustTimeoutMs = positiveIntegerEnv('MIDNIGHT_DUST_TIMEOUT_MS', 12 * 60 * 60_000);
+  process.stdout.write('Syncing the DUST wallet (on a public network a new wallet replays its whole history - up to an hour)...\n');
+  await waitForDustSync(context, dustTimeoutMs);
   process.stdout.write('Checking NIGHT registration and DUST balance...\n');
   const state = await Rx.firstValueFrom(
     context.wallet.state().pipe(

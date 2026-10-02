@@ -1,21 +1,22 @@
 ---
-name: sadako-demo
-description: Run and present SADAKO — the worksite worker-condition system on Midnight. Use to demo the app (bring up the local devnet, deploy the contract, walk the two roles, show on-chain verification and the tamper-detection story), or to verify the repo (tests / typecheck / Compact contract + ZK-circuit tests). The host has no Node; everything runs in a throwaway Docker container via ./run.sh (run.ps1 / run.bat on Windows).
+name: ohayo-demo
+description: Run and present OHAYO! — the worksite worker-condition system on Midnight. Use to demo the app (bring up the local devnet, deploy the contract, walk the two roles, show on-chain verification and the tamper-detection story), or to verify the repo (tests / typecheck / Compact contract + ZK-circuit tests). The host has no Node; everything runs in a throwaway Docker container via ./run.sh (run.ps1 / run.bat on Windows).
 ---
 
-SADAKO records a partner-computed **0–100 worker condition value** on the Midnight
+OHAYO! records a partner-computed **0–100 worker condition value** on the Midnight
 `condition-registry` contract. The raw value stays private (committed as a ZK
 witness); only the three-state band `正常` / `要注意` / `危険` is disclosed
 on-chain, keyed by a salted hash of the ring id and the day. A role-scoped read
-API serves the band history back. One worksite, two roles, and the login token
-is simply the worker's id.
+API serves the band history back. One worksite, two roles, and login is a
+Midnight wallet signature — or, locally, a guest sandbox.
 
 Design: [`docs/worksite_condition_system.md`](../../../docs/worksite_condition_system.md)
 ([日本語](../../../docs/ja/worksite_condition_system.md)).
 
-Everything runs locally — libSQL/SQLite plus a local Midnight devnet. There is no
-cloud deployment target, and the dashboard **always** runs against a real deployed
-contract — there is no offline/sample-data mode. **The host has no Node/npm**:
+Locally everything runs on libSQL/SQLite plus a local Midnight devnet; the hosted
+demo runs on Cloudflare workers.dev against Midnight preprod (`run.sh cloudflare`,
+`docs/deploy_cloudflare.md`). Either way the dashboard **always** runs against a real
+deployed contract — there is no offline/sample-data mode. **The host has no Node/npm**:
 every command goes through `./run.sh`, which does the work inside a throwaway
 `node:22-bookworm` container with the repo bind-mounted. `run.ps1` is a native
 Windows port (Docker Desktop only, no Git Bash / WSL) and `run.bat` is its cmd.exe
@@ -59,23 +60,39 @@ change) without redeploying the contract, as long as
 `.state/midnight-chain/deployment-local.json` still points at a contract that
 exists on the running chain.
 
-The roster and the feed start **empty**. Build the roster and submit a value
-from データ管理 as `admin` (the feed is populated as a side effect of submitting):
+The roster and the feed start **empty**. As `admin`, build the roster in データ管理;
+scores come from the worker (ring sync) or from the partner mock's simulate command —
+the admin never enters a score:
 
 1. リング — create a ring with any name.
 2. 作業員 — create `worker-1` (use that exact id so the `worker-1` login works),
    then assign the ring to them from the リング row's 作業員 dropdown.
-3. コンディション値を送信（devnet） — pick that ring, enter a value (0–100) and
-   a timestamp, and press **送信**. This proves and submits a real transaction.
+3. Log in as `worker-1` and send a score from the **リング同期** card. For past days
+   or other rings, seed the partner mock (`mn-condition-partner` on :8788) instead:
+   `docker exec mn-condition-partner npx tsx apps/partner-mock/src/cli.ts simulate --rings <ring-id> [--date YYYY-MM-DD]`.
+4. 送信キュー — press **パートナーから取得**. The toast counts new / duplicate /
+   conflict / bad-signature / unknown-ring scores; the rows appear as a **band only**
+   (the admin never receives a partner value). Press **チェーンへ送信** — each row
+   is proven and submitted as a real transaction and turns 記録済み.
 
 ### The two roles — show them in this order
 
-Tokens are trivial: **`worker-1` is the worker's own id**, and `admin` is the one
-fixed staff token. No user table, no passwords.
+Login is **Lace で接続してログイン** (the admin's key hash must be in
+`ADMIN_WALLET_KEY_HASHES` — the first attempt shows it; a worker enters the invite
+code issued from データ管理 once). Without Lace, press **ゲストとして試す**:
+`run.sh e2e` enables guest entry locally (`GUEST_ENTRY=0` to require Lace). A guest
+gets their own worker and ring and switches between 作業員 and 管理者 in the yellow
+sandbox bar; the guest admin cannot edit the roster and submits only their own ring,
+at most 3 times.
 
 **1. `worker-1` — ユーザー (worker).** The point of the whole system.
 
 - Their own day's band, and **the raw 0–100 number next to it**.
+- The **リング同期** card: enter a score (0–100); **パートナーへ送信** posts it straight
+  from the browser to the partner mock (not through OHAYO!). It reaches OHAYO! only when the admin presses パートナーから取得, and the
+  chain after チェーンへ送信. One entry per ring per day — a second send for a day
+  already on chain shows as スキップ · この日は記録済み. Open the dashboard as
+  `http://localhost:8787` (the partner's CORS allows only that origin).
 - Nav has one item. A worker sees nothing but themselves.
 - Say: *this number is the only place the raw value is ever shown.*
 
@@ -84,7 +101,12 @@ fixed staff token. No user table, no passwords.
 - 本日 shows a card per worker on the site.
 - Open 一覧: bands, entryKey and tx columns, CSV export — but **no raw values,
   not even for the admin**.
-- データ管理 is the roster CRUD plus the one-shot on-chain submit form, admin-only.
+- データ管理 is the roster CRUD plus the submission queue (pull, submit, tamper option), admin-only. The admin cannot enter a score.
+- On a 要注意 / 危険 day the card shows **判断未記入**: click it to record the work
+  decision (就業 / 軽作業 / 休養). 就業 or 軽作業 on such a day is refused without a
+  reason. A correction appends a new row that supersedes the old one — nothing is
+  overwritten, and the worker sees the current decision and reason on their screen.
+  Decisions are DB-only (not on chain), which is stated in the dialog.
 - Say: *the admin runs the site and still cannot see anyone's score.*
 
 That contrast is the demo: **the person the data is about is the only one who can
@@ -105,25 +127,17 @@ just talk over the 一覧 table:
 
 ### The money shot: tamper detection
 
-At the bottom of データ管理, the submit form has a **ローカル記録を改ざんする**
-checkbox. With it ticked, the entered value goes into the local database while the
+In データ管理's 送信キュー, next to **チェーンへ送信**, is a **ローカル記録を改ざんする**
+checkbox. With it ticked, the worker's value stays in the local database while the
 chain receives a value from a *different* band.
 
-1. Submit one reading with the box ticked. Use a day that ring has not submitted
-   yet — the contract rejects a duplicate `(ring, day)`.
-2. Go to 一覧 and press **照合** on that row.
-3. **Press 照合 a second time.** This is not optional — see below.
-4. The second press reports a mismatch, **corrects the local row from the chain**
-   (`正常` → `危険` in the seeded example), and withdraws the verification.
-
-> **照合 is two-phase — the first press does not touch the chain.**
-> `reconcileSubmissions` runs with `phased: true`. For a row whose `reconciled_at`
-> is still NULL it just stamps `chain_verified_at` / `reconciled_at` from the
-> stored record and returns `localChecked: 1`; only once `reconciled_at` is set
-> does the next call open an `indexerConditionReader` and query the chain. So a
-> single press on a fresh row looks like "nothing happened" — the toast says
-> 「ローカル記録で照合済み（もう一度押すとチェーンに直接照会）」. Press again.
-> Expect `{ mismatches: 1, valueMismatches: 1 }` on the second press.
+1. Have the worker send a score for a day that ring has not submitted yet (the
+   contract rejects a duplicate `(ring, day)`), pull it, tick the box and press
+   チェーンへ送信. The toast says the local record now disagrees with the chain.
+2. Go to 一覧 and press **照合** on that row. One press reads the chain.
+3. It reports a mismatch (`{ mismatches: 1, valueMismatches: 1 }`), **corrects the
+   local row from the chain** (`正常` → `危険` in the seeded example), and withdraws
+   the verification.
 
 Say: *the operator's own database was altered and the chain caught it. That is the
 property a signed database cannot give you — the company that signed it is the
@@ -134,20 +148,22 @@ company under investigation.*
 ## Verification lanes
 
 ```bash
-bash ./run.sh test           # 51 unit tests + typecheck, SDK-free — the fast gate
+bash ./run.sh test           # 101 unit tests + typecheck, SDK-free — the fast gate
 bash ./run.sh test_sdk       # typecheck + tests for the Midnight-SDK workspaces
-bash ./run.sh test_contract  # compile with Compact 0.31.1 + 10 ZK-circuit tests
+bash ./run.sh test_contract  # compile with Compact 0.31.1 + 15 ZK-circuit tests
 bash ./run.sh test_all       # the three above, stops on first failure
 bash ./run.sh db             # ingester end-to-end vs a real libSQL server container
 ```
 
 | Lane | What it does |
 |---|---|
-| `test` | `npm run test` + `tsc --noEmit` for `@midnight-demo/{shared,db,condition-read,ingester-core,ingester,gateway}` |
-| `test_sdk` | `tsc --noEmit` + static tests for `@midnight-demo/{midnight-chain,condition-cli}`. Pulls the full Midnight SDK into `mn-condition-sdk-node-modules` (minutes on first run). No proof server / wallet / chain. |
+| `test` | `npm run test` + `tsc --noEmit` for `@midnight-demo/{shared,db,condition-read,ingester-core,ingester,gateway,partner-mock,worker}` |
+| `test_sdk` | `tsc --noEmit` + static tests for `@midnight-demo/{midnight-chain,condition-cli,chain-runner}`. Pulls the full Midnight SDK into `mn-condition-sdk-node-modules` (minutes on first run). No proof server / wallet / chain. |
 | `test_contract` | `compactc` 0.31.1 (fixed release, sha256-verified, cached in `mn-compact-toolchain`) compiles `condition-registry.compact` → `src/managed/`, then vitest + typecheck. Covers all three bands, the boundaries (60/59/40/39), duplicate-`entryKey` rejection, commitment mismatch (tampered value and tampered nonce), and the `recordedAt` day window. No proof generation, no chain. |
 | `db` | ingester vs a real `ghcr.io/tursodatabase/libsql-server` container on a private network: `seed --sample` → `record --local` → `plan` (expects 2 already-submitted) |
 | `devnet` | just the compose stack, no app work |
+| `deploy_preprod [wallet\|funding\|| `cloudflare [check|plan|deploy|checkpoint|status|tail|destroy|all]` | host the demo on workers.dev: all declared in the Alchemy stack `apps/worker/alchemy.run.ts`. `check` (the default) typechecks and builds the chain-runner image without an account; `destroy` removes everything; the other steps read `.env.cloudflare`.|status]` | deploy `condition-registry` to Midnight **preprod** with the wallet in `.env.preprod` (not `.env`); starts its own proof server. A new wallet's first `deploy` takes ~70 min (DUST wallet sync). Runbook: `docs/deploy_preprod.md`. Needs the user to request tNIGHT from the faucet (CAPTCHA) |
+| `cloudflare [check\|plan\|deploy\|checkpoint\|status\|tail\|destroy\|all]` | host the demo on workers.dev: Worker `ohayo` + D1 + R2 + two on-demand containers (chain runner, proof server) and Worker `ohayo-partner`, all declared in the Alchemy stack `apps/worker/alchemy.run.ts`. `check` (the default) typechecks the stack and builds the chain-runner image without an account; `plan` previews, `deploy` creates or updates, `destroy` removes everything after a confirmation; the other steps read `.env.cloudflare`. Runbook: `docs/deploy_cloudflare.md`. After `deploy`, only the hosted container uses the preprod operating wallet |
 | `down` / `clean` | stop containers / also delete the `mn-condition-*` volumes |
 
 There is no standalone `dashboard` lane — `e2e` deploys and serves it in one
@@ -173,24 +189,34 @@ Read these before editing anything here.
 - **Two roles, no scope machinery.** `admin` (管理者 — every worker, plus the
   Data admin screen), `worker` (ユーザー — themselves, and the only role that
   sees the raw 0–100 value).
-- **Auth is the token.** `admin` is a fixed string in `apps/gateway/src/auth.ts`;
-  any other token is looked up as a `workers.id`. There is no users table and no
-  `role_assignments`.
+- **Login is a wallet signature.** `apps/gateway/src/login.ts` (challenge → Lace
+  `signData` → BIP-340 verify → HMAC session). Admins by key hash
+  (`ADMIN_WALLET_KEY_HASHES`), workers by invite-code binding, guests only with
+  `GUEST_ENTRY=1`. There is no token shortcut in production code; tests mint
+  sessions with `apps/gateway/src/test-support.ts`.
 - **There is no site.** One worksite is assumed. The day boundary comes from
   `APP_TIME_ZONE` in `packages/shared/src/period.ts`.
 - **The dashboard always runs on-chain.** There is no offline/sample-data mode
   and no standalone `dashboard` lane — `run.sh e2e` is the one command that
   deploys the contract and serves the dashboard joined to it.
-- **libSQL only.** No D1, no Cloudflare, no `STORAGE_MODE`.
-  `createDatabase({ url })` takes a libSQL URL (`file:` or `http://`).
+- **libSQL locally, D1 adapter ready.** `createDatabase({ url })` takes a libSQL
+  URL (`file:` or `http://`). `@midnight-demo/db/d1` (`d1Database(binding)`) wraps
+  a Cloudflare D1 binding for the hosted Worker; nothing is hosted until phase 6
+  of `docs/next_phase_design.md`. No `STORAGE_MODE`.
 - **The ingester stays SDK-free.** `apps/ingester` and `apps/gateway` must not
   import Compact, wallet, proving or deployment modules —
   `apps/ingester/src/boundary.test.ts` enforces it. Only `packages/midnight-chain`
-  touches the Midnight SDK.
+  touches the Midnight SDK, and it never touches the database: it exposes the
+  `ConditionChain` port (`conditionChain(network, address)`), and the DB side of
+  submit / reconcile lives in `apps/ingester/src/{store,submit,reconcile}.ts`.
+  `apps/gateway/src/boundary.test.ts` walks the Worker-facing import graph and
+  fails if it reaches the Compact runtime (`@midnight-demo/shared/commitment`),
+  the SDK, libSQL, or a Node built-in.
 - **Licensing.** Apache-2.0 (`LICENSE`, `NOTICE`, and a `license` field in every
   `package.json`). Keep new workspaces consistent — the Buildathon rules require it.
-- Schema changes go straight into the single migration
-  `packages/db/migrations/0001_condition_schema.sql`; there is no history to preserve.
+- Schema changes are new numbered files in `packages/db/migrations/` (the hosted D1
+  holds data; `run.sh cloudflare deploy` applies new files); `0001_condition_schema.sql` is
+  frozen. A local e2e database made before a change is recreated by the next `run.sh e2e`.
 
 ---
 

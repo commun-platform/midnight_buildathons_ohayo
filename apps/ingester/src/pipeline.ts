@@ -8,7 +8,7 @@ import {
 } from '@midnight-demo/ingester-core';
 import { fileURLToPath } from 'node:url';
 
-import { loadRoster, recordSubmissions, submittedEntryKeys } from './db.js';
+import { loadRoster, recordSubmissions, submittedEntryKeys } from './store.js';
 import { dbConditionSource, type ConditionSource } from './sources.js';
 
 export const repoRoot = fileURLToPath(new URL('../../../', import.meta.url));

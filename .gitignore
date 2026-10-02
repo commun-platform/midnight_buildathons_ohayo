@@ -12,6 +12,8 @@ coverage/
 .parcel-cache/
 .vite/
 .turbo/
+.wrangler/
+.alchemy/
 
 # Compact and proving-key output
 contracts/*/src/managed/
@@ -26,6 +28,7 @@ contracts/*/src/generated/
 *.pfx
 *.pem
 credentials.json
+.dev.vars
 secrets.json
 
 # Runtime state and collected data

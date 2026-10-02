@@ -6,6 +6,7 @@ import type { SqlDatabase } from './sql.js';
 export * from './sql.js';
 export * from './factory.js';
 export { LibSqlDatabase } from './libsql.js';
+export * from './d1.js';
 export * from './migrate.js';
 export { loadConditionMigrations, loadSampleFeed, loadSampleRoster } from './migrations.js';
 

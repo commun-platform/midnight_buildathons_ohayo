@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# run.sh - test/verify harness for SADAKO (the worksite condition system).
+# run.sh - test/verify harness for OHAYO! (the worksite condition system).
 #
 # The host machine has no Node/npm, so everything runs inside a throwaway
 # `node:22-bookworm` Docker container with the repo bind-mounted. node_modules
@@ -23,6 +23,13 @@
 #                  joined to the deployed contract
 #                  (RESUME=1 skips fund/deploy and reuses the existing deployment
 #                  and dashboard - use this to just restart the dashboard)
+#   deploy_preprod [wallet|funding|deploy|status]
+#                  deploy condition-registry to Midnight preprod with the wallet
+#                  in .env.preprod (no step = funding -> deploy -> status)
+#   cloudflare [check|plan|deploy|checkpoint|status|tail|destroy|all]
+#                  host the demo on workers.dev (Worker + D1 + R2 + Containers),
+#                  declared in apps/worker/alchemy.run.ts (Alchemy); credentials
+#                  in .env.cloudflare; `check` needs none; `destroy` removes it all
 #   down           stop the dashboard / devnet / local libSQL containers
 #   clean          also delete the node_modules + toolchain volumes
 #
@@ -39,6 +46,24 @@ TOOLCHAIN_VOLUME=mn-compact-toolchain
 # A named volume, not the Windows bind mount (libSQL file:// there is flaky).
 E2E_DB_VOLUME=mn-condition-e2e-data
 IMAGE=node:22-bookworm
+PREPROD_ENV_FILE=.env.preprod
+PREPROD_NET=mn-condition-preprod-net
+PREPROD_PROOF=mn-condition-preprod-proof
+PROOF_SERVER_IMAGE=midnightntwrk/proof-server:8.1.0
+PARTNER_DATA_VOLUME=mn-condition-partner-data
+PARTNER_ENV_FILE=.state/partner-mock/dev.env
+GATEWAY_SECRET_FILE=.state/gateway/session-secret
+GATEWAY_OPENING_FILE=.state/gateway/opening-key
+WORKER_VOLUME=mn-condition-worker-node-modules
+WORKER_APP_VOLUME=mn-condition-worker-app-node-modules
+CF_TOOL_IMAGE=mn-condition-cloudflare
+CF_STAGE=demo
+CF_ENV_FILE=.env.cloudflare
+CF_STATE_DIR=.state/cloudflare
+CF_PARTNER_ENV_FILE=.state/cloudflare/partner.env
+CF_SESSION_FILE=.state/cloudflare/session-secret
+CF_OPENING_FILE=.state/cloudflare/opening-key
+CF_SECRETS_FILE=.state/cloudflare/secrets.env
 
 # Compact toolchain 0.31.1 (language 0.23.0) - the version pinned in .compact-version.
 # A versioned release artifact (not `curl | sh`); the sha256 is checked before use.
@@ -91,33 +116,348 @@ MOUNTS=(
   -v /app/packages/condition-read/node_modules
   -v /app/apps/ingester/node_modules
   -v /app/apps/gateway/node_modules
+  -v /app/apps/partner-mock/node_modules
+  -v /app/apps/worker/node_modules
 )
 
-OFFLINE_WS='@midnight-demo/shared @midnight-demo/db @midnight-demo/condition-read @midnight-demo/ingester-core @midnight-demo/ingester @midnight-demo/gateway'
+OFFLINE_WS='@midnight-demo/shared @midnight-demo/db @midnight-demo/condition-read @midnight-demo/ingester-core @midnight-demo/ingester @midnight-demo/gateway @midnight-demo/partner-mock @midnight-demo/worker'
 
 # Scoped install: only the workspaces the offline flow needs. tsx hoists to the
 # root node_modules, so its presence is the "already installed" marker.
-INSTALL='[ -d node_modules/tsx ] || npm ci \
+INSTALL='[ -d node_modules/wrangler ] || npm ci \
   --workspace @midnight-demo/shared \
   --workspace @midnight-demo/db \
   --workspace @midnight-demo/condition-read \
   --workspace @midnight-demo/ingester-core \
   --workspace @midnight-demo/ingester \
-  --workspace @midnight-demo/gateway \
+  --workspace @midnight-demo/gateway --workspace @midnight-demo/partner-mock \
+  --workspace @midnight-demo/worker \
   --include-workspace-root=true --no-audit --no-fund'
 
 # ---------------------------------------------------------------------------
 # lanes
 # ---------------------------------------------------------------------------
 lane_down() {
-  docker rm -f mn-condition-libsql mn-condition-dashboard mn-condition-integrate >/dev/null 2>&1 || true
-  docker network rm mn-condition-net >/dev/null 2>&1 || true
+  docker rm -f mn-condition-libsql mn-condition-dashboard mn-condition-partner mn-condition-integrate mn-condition-preprod "$PREPROD_PROOF" >/dev/null 2>&1 || true
+  docker network rm mn-condition-net "$PREPROD_NET" >/dev/null 2>&1 || true
   docker compose -f "$ROOT/ops/local/midnight-compose.yml" down >/dev/null 2>&1 || true
   echo "removed containers"
   if [ "${1:-}" = clean ]; then
-    docker volume rm "$VOLUME" "$CONTRACT_VOLUME" "$SDK_VOLUME" "$TOOLCHAIN_VOLUME" "$E2E_DB_VOLUME" >/dev/null 2>&1 || true
+    docker volume rm "$VOLUME" "$CONTRACT_VOLUME" "$SDK_VOLUME" "$TOOLCHAIN_VOLUME" "$E2E_DB_VOLUME" "$PARTNER_DATA_VOLUME" "$WORKER_VOLUME" "$WORKER_APP_VOLUME" >/dev/null 2>&1 || true
     echo "removed volumes (next run reinstalls)"
   fi
+}
+
+partner_dev_env() {
+  local file="$ROOT/$PARTNER_ENV_FILE"
+  [ -s "$file" ] && return 0
+  mkdir -p "$(dirname "$file")"
+  MSYS_NO_PATHCONV=1 docker run --rm -w /app \
+    -v "${HOSTPATH}:/app" \
+    -v "${SDK_VOLUME}:/app/node_modules" \
+    -v /app/packages/shared/node_modules \
+    -v /app/apps/partner-mock/node_modules \
+    "$IMAGE" npx --no-install tsx apps/partner-mock/src/cli.ts keygen > "$file.tmp"
+  mv "$file.tmp" "$file"
+  echo "generated partner mock dev keys ($PARTNER_ENV_FILE)"
+}
+
+secret_file_value() {
+  local file="$ROOT/$1"
+  if [ ! -s "$file" ]; then
+    mkdir -p "$(dirname "$file")"
+    (umask 077; openssl rand -hex 32 > "$file")
+  fi
+  tr -d '[:space:]' < "$file"
+}
+
+partner_env_value() {
+  grep -E "^$1=" "$ROOT/$PARTNER_ENV_FILE" | head -1 | cut -d= -f2-
+}
+
+start_partner() {
+  local net="$1"
+  partner_dev_env
+  docker rm -f mn-condition-partner >/dev/null 2>&1 || true
+  MSYS_NO_PATHCONV=1 docker run -d --name mn-condition-partner -w /app -p 8788:8788 \
+    --network "$net" \
+    -v "${HOSTPATH}:/app" \
+    -v "${SDK_VOLUME}:/app/node_modules" \
+    -v /app/packages/shared/node_modules \
+    -v /app/packages/db/node_modules \
+    -v /app/apps/partner-mock/node_modules \
+    -v "${PARTNER_DATA_VOLUME}:/partner" \
+    -e PARTNER_DB_URL=file:/partner/partner.db \
+    -e PARTNER_SIGNING_KEY="$(partner_env_value PARTNER_SIGNING_KEY)" \
+    -e PARTNER_API_KEY="$(partner_env_value PARTNER_API_KEY)" \
+    -e PARTNER_ALLOWED_ORIGIN=http://localhost:8787 \
+    "$IMAGE" npx --no-install tsx apps/partner-mock/src/server.ts >/dev/null
+  local i
+  for i in $(seq 1 60); do
+    if docker exec mn-condition-partner sh -c 'curl -sf http://127.0.0.1:8788/health >/dev/null' 2>/dev/null; then
+      echo "partner mock: http://localhost:8788"
+      return 0
+    fi
+    sleep 1
+  done
+  echo "partner mock did not come up" >&2
+  docker logs --tail 40 mn-condition-partner
+  return 1
+}
+
+preprod_proof_server() {
+  docker network inspect "$PREPROD_NET" >/dev/null 2>&1 || docker network create "$PREPROD_NET" >/dev/null
+  if [ -z "$(docker ps -q -f "name=^${PREPROD_PROOF}$")" ]; then
+    docker rm -f "$PREPROD_PROOF" >/dev/null 2>&1 || true
+    docker run -d --name "$PREPROD_PROOF" --network "$PREPROD_NET" \
+      "$PROOF_SERVER_IMAGE" midnight-proof-server -v >/dev/null
+    echo "started $PREPROD_PROOF ($PROOF_SERVER_IMAGE)"
+  fi
+}
+
+lane_deploy_preprod() {
+  local step="${1:-all}"
+  case "$step" in
+    all|wallet|funding|deploy|status) ;;
+    *) echo "unknown deploy_preprod step: $step (wallet | funding | deploy | status)" >&2; return 2 ;;
+  esac
+  [ -f "$ROOT/$PREPROD_ENV_FILE" ] || {
+    echo "$PREPROD_ENV_FILE is missing - see docs/deploy_preprod.md" >&2
+    return 1
+  }
+  preprod_proof_server
+
+  docker rm -f mn-condition-preprod >/dev/null 2>&1 || true
+  MSYS_NO_PATHCONV=1 docker run --rm --name mn-condition-preprod -w /app \
+    --network "$PREPROD_NET" \
+    -v "${HOSTPATH}:/app" \
+    -v "${SDK_VOLUME}:/app/node_modules" \
+    -v "${TOOLCHAIN_VOLUME}:/opt/compact" \
+    -v /app/packages/shared/node_modules \
+    -v /app/packages/db/node_modules \
+    -v /app/packages/condition-read/node_modules \
+    -v /app/packages/ingester-core/node_modules \
+    -v /app/packages/midnight-chain/node_modules \
+    -v /app/contracts/condition-registry/node_modules \
+    -v /app/apps/ingester/node_modules \
+    -v /app/apps/gateway/node_modules \
+    -v /app/apps/partner-mock/node_modules \
+    -v /app/apps/chain-runner/node_modules \
+    -v /app/apps/worker/node_modules \
+    -v /app/apps/development/condition-cli/node_modules \
+    -e MIDNIGHT_HOST_ROLE=development \
+    -e DEVELOPMENT_ENV_FILE="$PREPROD_ENV_FILE" \
+    -e MIDNIGHT_NETWORK=preprod \
+    -e MIDNIGHT_PROOF_SERVER_URL="http://${PREPROD_PROOF}:6300" \
+    -e STEP="$step" \
+    "$IMAGE" bash -euo pipefail -c "
+      [ -d node_modules/@midnight-ntwrk/wallet-sdk ] || npm ci \
+        --workspace @midnight-demo/shared --workspace @midnight-demo/db \
+        --workspace @midnight-demo/condition-read --workspace @midnight-demo/ingester-core \
+        --workspace @midnight-demo/ingester --workspace @midnight-demo/condition-registry-contract \
+        --workspace @midnight-demo/midnight-chain --workspace @midnight-demo/condition-cli --workspace @midnight-demo/chain-runner \
+        --workspace @midnight-demo/gateway --workspace @midnight-demo/partner-mock \
+        --include-workspace-root=true --no-audit --no-fund
+
+      cli() {
+        npx tsx apps/development/condition-cli/src/cli.ts \"\$@\" 2>&1 \
+          | sed -u '/recovery phrase:/{n;s/.*/  (written to $PREPROD_ENV_FILE - back that file up)/}'
+      }
+
+      if [ \"\$STEP\" = all ] || [ \"\$STEP\" = deploy ]; then
+        if [ ! -x /opt/compact/compactc ]; then
+          echo '== fetching Compact toolchain 0.31.1 =='
+          apt-get -qq update >/dev/null && apt-get -qq install -y unzip >/dev/null
+          curl -fL --retry 3 -o /tmp/compactc.zip '$COMPACTC_URL'
+          echo '$COMPACTC_SHA256  /tmp/compactc.zip' | sha256sum -c -
+          (cd /opt/compact && unzip -oq /tmp/compactc.zip && chmod +x compactc compactc.bin zkir zkir-v3 fixup-compact format-compact)
+        fi
+        export PATH=/opt/compact:\$PATH
+        if [ ! -f contracts/condition-registry/src/managed/condition-registry/contract/index.js ]; then
+          echo \"== compile condition-registry (compactc \$(compactc --version)) ==\"
+          compactc contracts/condition-registry/src/condition-registry.compact \
+                   contracts/condition-registry/src/managed/condition-registry
+        fi
+      fi
+
+      case \"\$STEP\" in
+        wallet)  cli wallet ;;
+        funding) cli funding ;;
+        deploy)  cli deploy; cli status ;;
+        status)  cli status ;;
+        all)     cli funding; cli deploy; cli status ;;
+      esac
+      echo 'PREPROD OK'
+    "
+}
+
+cf_value() {
+  [ -f "$ROOT/$1" ] || return 0
+  { grep -E "^$2=" "$ROOT/$1" || true; } | head -1 | cut -d= -f2- | tr -d '\r'
+}
+
+host_path() {
+  if command -v cygpath >/dev/null 2>&1; then cygpath -w "$1"; else printf '%s' "$1"; fi
+}
+
+cloudflare_image() {
+  docker image inspect "$CF_TOOL_IMAGE" >/dev/null 2>&1 && return 0
+  echo "building $CF_TOOL_IMAGE (node + docker CLI for the container image builds)"
+  docker build -q -t "$CF_TOOL_IMAGE" -f "$ROOT/ops/cloudflare/tools.Dockerfile" "$ROOT/ops/cloudflare" >/dev/null
+}
+
+WORKER_MOUNTS=(
+  -v "${HOSTPATH}:/app"
+  -v "${WORKER_VOLUME}:/app/node_modules"
+  -v "${WORKER_APP_VOLUME}:/app/apps/worker/node_modules"
+  -v /app/packages/shared/node_modules
+  -v /app/packages/db/node_modules
+  -v /app/packages/ingester-core/node_modules
+  -v /app/packages/condition-read/node_modules
+  -v /app/apps/ingester/node_modules
+  -v /app/apps/gateway/node_modules
+  -v /app/apps/partner-mock/node_modules
+)
+
+WORKER_INSTALL='[ -d apps/worker/node_modules/alchemy ] || npm ci \
+  --workspace @midnight-demo/worker --workspace @midnight-demo/partner-mock \
+  --include-workspace-root=true --no-audit --no-fund'
+
+ALCHEMY='node /app/apps/worker/node_modules/alchemy/bin/cli.js'
+ALCHEMY_ARGS="--config /app/apps/worker/alchemy.run.ts --stage $CF_STAGE"
+
+cf_run() {
+  local env_args=()
+  local file
+  for file in "$PREPROD_ENV_FILE" "$CF_ENV_FILE" "$CF_SECRETS_FILE"; do
+    [ -f "$ROOT/$file" ] && env_args+=(--env-file "$(host_path "$ROOT/$file")")
+  done
+  mkdir -p "$ROOT/$CF_STATE_DIR"
+  MSYS_NO_PATHCONV=1 docker run --rm -w /app "${WORKER_MOUNTS[@]}" \
+    -v /var/run/docker.sock:/var/run/docker.sock \
+    "${env_args[@]}" -e CI=true -e WRANGLER_SEND_METRICS=false \
+    "$CF_TOOL_IMAGE" bash -euo pipefail -c "$WORKER_INSTALL
+$1"
+}
+
+cf_partner_env() {
+  local file="$ROOT/$CF_PARTNER_ENV_FILE"
+  [ -s "$file" ] && return 0
+  mkdir -p "$(dirname "$file")"
+  MSYS_NO_PATHCONV=1 docker run --rm -w /app "${WORKER_MOUNTS[@]}" "$CF_TOOL_IMAGE" bash -euo pipefail -c "
+    $WORKER_INSTALL >/dev/null
+    npx --no-install tsx apps/partner-mock/src/cli.ts keygen" > "$file.tmp"
+  mv "$file.tmp" "$file"
+  echo "generated the hosted partner keys ($CF_PARTNER_ENV_FILE)"
+}
+
+cf_secrets_file() {
+  cf_partner_env
+  (
+    umask 077
+    {
+      echo "SESSION_SECRET=$(secret_file_value "$CF_SESSION_FILE")"
+      echo "OPENING_KEY=$(secret_file_value "$CF_OPENING_FILE")"
+      grep -E '^PARTNER_(API_KEY|PUBLIC_KEY|SIGNING_KEY)=' "$ROOT/$CF_PARTNER_ENV_FILE"
+    } > "$ROOT/$CF_SECRETS_FILE"
+  )
+}
+
+cf_require() {
+  [ -f "$ROOT/$CF_ENV_FILE" ] || {
+    echo "$CF_ENV_FILE is missing - see docs/deploy_cloudflare.md" >&2
+    return 1
+  }
+  local key
+  for key in CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID WORKERS_SUBDOMAIN ADMIN_WALLET_KEY_HASHES; do
+    [ -n "$(cf_value "$CF_ENV_FILE" "$key")" ] || {
+      echo "$key is empty in $CF_ENV_FILE" >&2
+      return 1
+    }
+  done
+  local file
+  for key in DEVELOPMENT_WALLET_MNEMONIC DEVELOPMENT_PRIVATE_STATE_PASSWORD INGESTER_SALT_HEX CONDITION_REGISTRY_CONTRACT_ADDRESS; do
+    [ -n "$(cf_value "$PREPROD_ENV_FILE" "$key")" ] || {
+      echo "$key is empty in $PREPROD_ENV_FILE - the hosted demo uses the preprod wallet, salt and contract" >&2
+      return 1
+    }
+  done
+}
+
+cf_checkpoint() {
+  mkdir -p "$ROOT/$CF_STATE_DIR"
+  MSYS_NO_PATHCONV=1 docker run --rm -w /app \
+    -v "${HOSTPATH}:/app" \
+    -v "${SDK_VOLUME}:/app/node_modules" \
+    -v /app/packages/shared/node_modules \
+    -v /app/packages/condition-read/node_modules \
+    -v /app/packages/ingester-core/node_modules \
+    -v /app/packages/midnight-chain/node_modules \
+    -v /app/contracts/condition-registry/node_modules \
+    -v /app/apps/chain-runner/node_modules \
+    -e MIDNIGHT_HOST_ROLE=development \
+    -e DEVELOPMENT_ENV_FILE="$PREPROD_ENV_FILE" \
+    -e MIDNIGHT_NETWORK=preprod \
+    "$IMAGE" npx --no-install tsx apps/chain-runner/src/cli.ts export --out "$CF_STATE_DIR/checkpoint.enc"
+  cf_run "npx wrangler r2 object put ohayo-wallet-state/ohayo-wallet/preprod/checkpoint.enc \
+    --file /app/$CF_STATE_DIR/checkpoint.enc --content-type application/octet-stream --remote"
+}
+
+cf_status() {
+  local sub
+  sub=$(cf_value "$CF_ENV_FILE" WORKERS_SUBDOMAIN)
+  curl -fsS "https://midnight-proof-ohayo.$sub.workers.dev/api/config" | jq . || true
+  cf_run "npx wrangler containers list || true"
+}
+
+cf_destroy() {
+  local answer
+  echo "This deletes the midnight-proof-ohayo and midnight-proof-ohayo-partner Workers, their D1 databases (all data),"
+  echo "the R2 bucket with the wallet checkpoint, both container applications and their images."
+  echo "The contract and its entries on Midnight preprod stay. Local files are kept."
+  read -r -p "Type 'ohayo' to destroy the hosted demo: " answer
+  [ "$answer" = ohayo ] || { echo "aborted"; return 1; }
+  cf_run "
+    cd /app/$CF_STATE_DIR
+    $ALCHEMY destroy $ALCHEMY_ARGS --yes
+    cd /app
+    images=\$( (npx wrangler containers images list --json 2>/dev/null || echo '[]') \
+      | jq -r '.[] | select(.name | test(\"^ohayo-(chainrunner|proofserver)-$CF_STAGE-\")) | .name + \":\" + .tags[]' || true)
+    for image in \$images; do
+      npx wrangler containers images delete \"\$image\" --skip-confirmation || true
+    done
+    echo 'CLOUDFLARE DESTROYED'
+  "
+}
+
+lane_cloudflare() {
+  local step="${1:-check}"
+  case "$step" in
+    check|plan|deploy|checkpoint|status|tail|destroy|all) ;;
+    *) echo "unknown cloudflare step: $step (check | plan | deploy | checkpoint | status | tail | destroy | all)" >&2; return 2 ;;
+  esac
+  cloudflare_image
+  if [ "$step" = check ]; then
+    cf_run "
+      npm run typecheck -w @midnight-demo/worker
+      npm run typecheck:stack -w @midnight-demo/worker
+      npm run test -w @midnight-demo/worker
+      docker build -q -f apps/chain-runner/Dockerfile -t ohayo-chain-runner:check . >/dev/null
+      docker image rm ohayo-chain-runner:check >/dev/null
+      echo 'CLOUDFLARE CHECK OK'
+    "
+    return
+  fi
+  cf_require
+  case "$step" in
+    plan)       cf_secrets_file; cf_run "cd /app/$CF_STATE_DIR && $ALCHEMY plan $ALCHEMY_ARGS" ;;
+    deploy)     cf_secrets_file; cf_run "cd /app/$CF_STATE_DIR && $ALCHEMY deploy $ALCHEMY_ARGS --yes" ;;
+    checkpoint) cf_checkpoint ;;
+    status)     cf_status ;;
+    tail)       cf_run "npx wrangler tail midnight-proof-ohayo --format pretty" ;;
+    destroy)    cf_secrets_file; cf_destroy ;;
+    all)        cf_secrets_file; cf_run "cd /app/$CF_STATE_DIR && $ALCHEMY deploy $ALCHEMY_ARGS --yes"; cf_checkpoint; cf_status ;;
+  esac
 }
 
 lane_test() {
@@ -151,6 +491,9 @@ lane_test_sdk() {
     -v /app/contracts/condition-registry/src/managed \
     -v /app/apps/ingester/node_modules \
     -v /app/apps/gateway/node_modules \
+    -v /app/apps/partner-mock/node_modules \
+    -v /app/apps/chain-runner/node_modules \
+    -v /app/apps/worker/node_modules \
     -v /app/apps/development/condition-cli/node_modules \
     -e MIDNIGHT_HOST_ROLE=development \
     "$IMAGE" bash -euo pipefail -c "
@@ -162,8 +505,8 @@ lane_test_sdk() {
         --workspace @midnight-demo/ingester \
         --workspace @midnight-demo/condition-registry-contract \
         --workspace @midnight-demo/midnight-chain \
-        --workspace @midnight-demo/condition-cli \
-        --workspace @midnight-demo/gateway \
+        --workspace @midnight-demo/condition-cli --workspace @midnight-demo/chain-runner \
+        --workspace @midnight-demo/gateway --workspace @midnight-demo/partner-mock \
         --include-workspace-root=true --no-audit --no-fund
       echo '== typecheck: @midnight-demo/midnight-chain =='
       npm run typecheck -w @midnight-demo/midnight-chain
@@ -171,8 +514,12 @@ lane_test_sdk() {
       npm run typecheck -w @midnight-demo/condition-cli
       echo '== test: @midnight-demo/midnight-chain =='
       npm run test -w @midnight-demo/midnight-chain
+      echo '== typecheck: @midnight-demo/chain-runner =='
+      npm run typecheck -w @midnight-demo/chain-runner
       echo '== test: @midnight-demo/condition-cli =='
       npm run test -w @midnight-demo/condition-cli
+      echo '== test: @midnight-demo/chain-runner =='
+      npm run test -w @midnight-demo/chain-runner
       echo 'SDK OK'
     "
 }
@@ -288,6 +635,9 @@ lane_integrate() {
     -v /app/contracts/condition-registry/node_modules \
     -v /app/apps/ingester/node_modules \
     -v /app/apps/gateway/node_modules \
+    -v /app/apps/partner-mock/node_modules \
+    -v /app/apps/chain-runner/node_modules \
+    -v /app/apps/worker/node_modules \
     -v /app/apps/development/condition-cli/node_modules \
     -v "${E2E_DB_VOLUME}:/e2e" \
     -e RESUME="${RESUME:-}" \
@@ -303,8 +653,8 @@ lane_integrate() {
         --workspace @midnight-demo/shared --workspace @midnight-demo/db \
         --workspace @midnight-demo/condition-read --workspace @midnight-demo/ingester-core \
         --workspace @midnight-demo/ingester --workspace @midnight-demo/condition-registry-contract \
-        --workspace @midnight-demo/midnight-chain --workspace @midnight-demo/condition-cli \
-        --workspace @midnight-demo/gateway \
+        --workspace @midnight-demo/midnight-chain --workspace @midnight-demo/condition-cli --workspace @midnight-demo/chain-runner \
+        --workspace @midnight-demo/gateway --workspace @midnight-demo/partner-mock \
         --include-workspace-root=true --no-audit --no-fund
 
       if [ ! -x /opt/compact/compactc ]; then
@@ -369,6 +719,7 @@ lane_dashboard() {
     -e MIDNIGHT_PROOF_SERVER_URL=http://proof-server:6300
   )
   echo "dashboard: joined to the devnet (contract $e2e_addr)"
+  start_partner "${dash_net[1]}"
 
   MSYS_NO_PATHCONV=1 docker run -d --name mn-condition-dashboard -w /app -p 8787:8787 \
     "${dash_net[@]}" \
@@ -382,6 +733,9 @@ lane_dashboard() {
     -v /app/contracts/condition-registry/node_modules \
     -v /app/apps/ingester/node_modules \
     -v /app/apps/gateway/node_modules \
+    -v /app/apps/partner-mock/node_modules \
+    -v /app/apps/chain-runner/node_modules \
+    -v /app/apps/worker/node_modules \
     -v /app/apps/development/condition-cli/node_modules \
     "${dash_db[@]}" \
     "${dash_chain[@]}" \
@@ -390,13 +744,21 @@ lane_dashboard() {
     -e PUBLIC_MIDNIGHT_NETWORK="${PUBLIC_MIDNIGHT_NETWORK:-Midnight Local}" \
     -e PUBLIC_MIDNIGHT_EXPLORER_URL="${PUBLIC_MIDNIGHT_EXPLORER_URL:-}" \
     -e DEVELOPMENT_PRIVATE_STATE_PASSWORD="${DEVELOPMENT_PRIVATE_STATE_PASSWORD:-Aa1!worksite-condition-devnet}" \
+    -e PARTNER_URL=http://mn-condition-partner:8788 \
+    -e PUBLIC_PARTNER_URL=http://localhost:8788 \
+    -e SESSION_SECRET="$(secret_file_value "$GATEWAY_SECRET_FILE")" \
+    -e OPENING_KEY="$(secret_file_value "$GATEWAY_OPENING_FILE")" \
+    -e GUEST_ENTRY="${GUEST_ENTRY:-1}" \
+    -e WALLET_NETWORK_ID="${WALLET_NETWORK_ID:-preprod}" \
+    -e PARTNER_API_KEY="$(partner_env_value PARTNER_API_KEY)" \
+    -e PARTNER_PUBLIC_KEY="$(partner_env_value PARTNER_PUBLIC_KEY)" \
     "$IMAGE" bash -c "
       [ -d node_modules/@midnight-ntwrk/wallet-sdk ] || npm ci \
         --workspace @midnight-demo/shared --workspace @midnight-demo/db \
         --workspace @midnight-demo/condition-read --workspace @midnight-demo/ingester-core \
         --workspace @midnight-demo/ingester --workspace @midnight-demo/condition-registry-contract \
-        --workspace @midnight-demo/midnight-chain --workspace @midnight-demo/condition-cli \
-        --workspace @midnight-demo/gateway \
+        --workspace @midnight-demo/midnight-chain --workspace @midnight-demo/condition-cli --workspace @midnight-demo/chain-runner \
+        --workspace @midnight-demo/gateway --workspace @midnight-demo/partner-mock \
         --include-workspace-root=true --no-audit --no-fund
       exec npm run --silent serve -w @midnight-demo/gateway
     " >/dev/null
@@ -414,6 +776,7 @@ lane_dashboard() {
   done
   echo "dashboard:  http://localhost:8787"
   echo "logs:       docker logs -f mn-condition-dashboard"
+  echo "partner:    docker exec mn-condition-partner npx tsx apps/partner-mock/src/cli.ts simulate --rings <ring-id>"
   echo "restart:    RESUME=1 ./run.sh e2e   (keeps the devnet + deployed contract)"
   echo "stop:       ./run.sh down"
 }
@@ -450,6 +813,8 @@ case "$lane" in
   db)            lane_db ;;
   devnet)        lane_devnet ;;
   e2e)           lane_e2e ;;
+  deploy_preprod) lane_deploy_preprod "${2:-}" ;;
+  cloudflare)    lane_cloudflare "${2:-}" ;;
   '')            echo "no lane (pass one, or set MODE_ENV)" >&2; usage; exit 2 ;;
   *)             echo "unknown lane: $lane" >&2; usage; exit 2 ;;
 esac

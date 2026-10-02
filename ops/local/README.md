@@ -1,6 +1,6 @@
 # Local development stack
 
-SADAKO talks to SQL through `@midnight-demo/db`, which speaks libSQL: the
+OHAYO! talks to SQL through `@midnight-demo/db`, which speaks libSQL: the
 libSQL server in this compose file, or a local SQLite file
 (`LIBSQL_URL=file:data/local.db`). Everything runs locally.
 

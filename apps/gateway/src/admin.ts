@@ -1,10 +1,16 @@
 import type { SqlDatabase } from '@midnight-demo/db';
+import { PartnerPullError, pullPartnerScores } from '@midnight-demo/ingester/partner';
+import { latestChainJob } from '@midnight-demo/ingester/queue';
+import { SHOWCASE_RING_IDS, seedShowcase, showcasePlan } from '@midnight-demo/ingester/showcase';
 import { classifyCondition } from '@midnight-demo/shared';
 
-import { authenticate } from './auth.js';
+import { authenticate, type SessionViewer } from './auth.js';
 import type { GatewayDeps } from './deps.js';
+import { generateInviteCode, inviteHash } from './login.js';
 
-const ADMIN_PATH = /^\/api\/(roster|staged|submit|rings|workers)(\/.*)?$/;
+const INVITE_MS = 7 * 24 * 60 * 60 * 1000;
+
+const ADMIN_PATH = /^\/api\/(roster|staged|rings|workers|partner|showcase)(\/.*)?$/;
 
 function json(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), {
@@ -72,10 +78,13 @@ async function roster(db: SqlDatabase): Promise<Response> {
     id: string;
     name: string;
     ring_id: string | null;
+    wallet_bound: number;
   }>(
     `SELECT w.id, wp.name,
             (SELECT m.ring_id FROM ring_worker_map m
-              WHERE m.worker_id = w.id AND m.to_ts IS NULL LIMIT 1) AS ring_id
+              WHERE m.worker_id = w.id AND m.to_ts IS NULL LIMIT 1) AS ring_id,
+            EXISTS (SELECT 1 FROM wallet_bindings b
+              WHERE b.worker_id = w.id AND b.revoked_at IS NULL) AS wallet_bound
        FROM workers w
        LEFT JOIN worker_pii wp ON wp.worker_id = w.id
       ORDER BY wp.name, w.id`,
@@ -94,6 +103,7 @@ async function roster(db: SqlDatabase): Promise<Response> {
       id: w.id,
       name: w.name,
       assignedRing: w.ring_id,
+      walletBound: Boolean(w.wallet_bound),
     })),
   });
 }
@@ -223,30 +233,10 @@ async function workers(
   return json(405, { error: 'Method not allowed' });
 }
 
-function validateFeed(
-  b: { recordedAt?: unknown; value?: unknown },
-): { recordedAt?: string; value?: number } | { error: string } {
-  const out: { recordedAt?: string; value?: number } = {};
-  if (b.recordedAt !== undefined) {
-    const recordedAt = str(b.recordedAt);
-    if (!recordedAt || !Number.isFinite(Date.parse(recordedAt))) {
-      return { error: 'recordedAt must be an ISO 8601 timestamp' };
-    }
-    out.recordedAt = recordedAt;
-  }
-  if (b.value !== undefined) {
-    const value = typeof b.value === 'number' ? b.value : Number.NaN;
-    if (!Number.isFinite(value) || value < 0 || value > 100) {
-      return { error: 'value must be a number in 0..100' };
-    }
-    out.value = value;
-  }
-  return out;
-}
-
 async function staged(
   db: SqlDatabase,
   deps: GatewayDeps,
+  viewer: SessionViewer,
   method: string,
   rest: string,
   request: Request,
@@ -258,7 +248,19 @@ async function staged(
         error: 'Submitting runs on a local devnet — start `gateway serve` with MIDNIGHT_NETWORK set.',
       });
     }
-    return json(200, await deps.submitStaged());
+    const b = (await readBody(request)) ?? {};
+    const tamper = b.tamper === true;
+    if (!viewer.guestId) {
+      return json(200, await deps.submitStaged({ tamper, submittedBy: viewer.subject }));
+    }
+    const limit = await guestSubmissionsLeft(db, deps, viewer);
+    if (limit <= 0) {
+      return json(429, { error: 'The guest sandbox submission limit is reached', code: 'guest_limit' });
+    }
+    return json(
+      200,
+      await deps.submitStaged({ tamper, ringIds: [viewer.guestRingId ?? ''], limit, submittedBy: viewer.subject }),
+    );
   }
 
   if (rest === '' && method === 'GET') {
@@ -269,10 +271,13 @@ async function staged(
       recorded_at: string;
       value: number;
       status: string;
+      source: string;
+      skip_reason: string | null;
+      last_error: string | null;
       worker_name: string | null;
     }>(
       `SELECT cr.id, cr.ring_id, r.label AS ring_label, cr.recorded_at, cr.value, cr.status,
-              wp.name AS worker_name
+              cr.source, cr.skip_reason, cr.last_error, wp.name AS worker_name
          FROM condition_readings cr
          LEFT JOIN rings r ON r.id = cr.ring_id
          LEFT JOIN ring_worker_map m ON m.ring_id = cr.ring_id AND m.to_ts IS NULL
@@ -287,130 +292,155 @@ async function staged(
       ).map((r) => `${r.ring_id}|${Number(r.recorded_at_ms)}`),
     );
     return json(200, {
+      job: await latestChainJob(db),
       rows: rows.map((row) => ({
         id: row.id,
         ringId: row.ring_id,
         ringLabel: row.ring_label,
         workerName: row.worker_name,
         recordedAt: row.recorded_at,
-        value: row.value,
+        value: row.source === 'partner_api' ? null : row.value,
         band: classifyCondition(row.value),
+        source: row.source,
         status: row.status,
+        skipReason: row.skip_reason,
+        lastError: row.last_error,
         submitted: submitted.has(`${row.ring_id}|${Date.parse(row.recorded_at)}`),
       })),
     });
   }
 
-  if (rest === '' && method === 'POST') {
-    const b = await readBody(request);
-    if (!b) return json(400, { error: 'Invalid JSON body' });
-    const ringId = str(b.ringId);
-    if (!ringId || !(await db.first('SELECT 1 FROM rings WHERE id = ?', [ringId]))) {
-      return json(404, { error: 'Unknown ring' });
-    }
-    const fields = validateFeed(b);
-    if ('error' in fields) return json(400, fields);
-    if (fields.recordedAt === undefined || fields.value === undefined) {
-      return json(400, { error: 'recordedAt and value are required' });
-    }
-    await db.execute(
-      `INSERT INTO condition_readings (ring_id, recorded_at, value, source, status, created_at)
-       VALUES (?, ?, ?, 'manual', 'pending', ?)`,
-      [ringId, fields.recordedAt, fields.value, now()],
-    );
-    const created = await db.first<{ id: number }>(
-      'SELECT id FROM condition_readings WHERE ring_id = ? AND recorded_at = ? ORDER BY id DESC LIMIT 1',
-      [ringId, fields.recordedAt],
-    );
-    return json(200, {
-      id: created?.id ?? null,
-      ringId,
-      recordedAt: fields.recordedAt,
-      value: fields.value,
-      band: classifyCondition(fields.value),
-      status: 'pending',
-      submitted: false,
-    });
-  }
+  if (rest === '') return json(405, { error: 'Method not allowed' });
 
   const idMatch = rest.match(/^\/(\d+)$/);
   if (idMatch) {
     const rid = Number(idMatch[1]);
     if (method === 'DELETE') {
+      if (viewer.guestId) {
+        const own = await db.first('SELECT 1 FROM condition_readings WHERE id = ? AND ring_id = ?', [rid, viewer.guestRingId]);
+        if (!own) return json(403, { error: 'The guest sandbox can only delete its own readings', code: 'sandbox' });
+      }
       const n = await db.execute('DELETE FROM condition_readings WHERE id = ?', [rid]);
       return n === 0 ? json(404, { error: 'Unknown reading' }) : json(200, { deleted: rid });
-    }
-    if (method === 'PATCH') {
-      const b = await readBody(request);
-      if (!b) return json(400, { error: 'Invalid JSON body' });
-      const fields = validateFeed(b);
-      if ('error' in fields) return json(400, fields);
-      const sets: string[] = [];
-      const params: (string | number)[] = [];
-      if (fields.recordedAt !== undefined) {
-        sets.push('recorded_at = ?');
-        params.push(fields.recordedAt);
-      }
-      if (fields.value !== undefined) {
-        sets.push('value = ?');
-        params.push(fields.value);
-      }
-      if (!sets.length) return json(400, { error: 'recordedAt or value is required' });
-      params.push(rid);
-      const n = await db.execute(
-        `UPDATE condition_readings SET ${sets.join(', ')} WHERE id = ?`,
-        params,
-      );
-      if (n === 0) return json(404, { error: 'Unknown reading' });
-      const row = await db.first<{ ring_id: string; recorded_at: string; value: number }>(
-        'SELECT ring_id, recorded_at, value FROM condition_readings WHERE id = ?',
-        [rid],
-      );
-      return json(200, {
-        id: rid,
-        ringId: row?.ring_id,
-        recordedAt: row?.recorded_at,
-        value: row?.value,
-        band: row ? classifyCondition(row.value) : null,
-      });
     }
     return json(405, { error: 'Method not allowed' });
   }
   return json(404, { error: 'Unknown API route' });
 }
 
-async function submit(db: SqlDatabase, deps: GatewayDeps, request: Request): Promise<Response> {
-  const b = await readBody(request);
-  if (!b) return json(400, { error: 'Invalid JSON body' });
-  const ringId = str(b.ringId);
-  const value = typeof b.value === 'number' ? b.value : Number.NaN;
-  const recordedAt = str(b.recordedAt);
-  const tamper = b.tamper === true;
-  if (!ringId) return json(400, { error: 'ringId is required' });
-  if (!Number.isFinite(value) || value < 0 || value > 100) {
-    return json(400, { error: 'value must be a number in 0..100' });
+async function guestSubmissionsLeft(db: SqlDatabase, deps: GatewayDeps, viewer: SessionViewer): Promise<number> {
+  const hourAgo = new Date(Date.now() - 3_600_000).toISOString();
+  const own =
+    (await count(db, 'SELECT COUNT(*) AS n FROM submissions WHERE submitted_by = ?', [viewer.subject])) +
+    (await count(db, "SELECT COUNT(*) AS n FROM condition_readings WHERE status = 'queued' AND queued_by = ?", [
+      viewer.subject,
+    ]));
+  const lastHour =
+    (await count(
+      db,
+      "SELECT COUNT(*) AS n FROM submissions WHERE submitted_by LIKE 'guest:%' AND submitted_at > ?",
+      [hourAgo],
+    )) +
+    (await count(
+      db,
+      "SELECT COUNT(*) AS n FROM condition_readings WHERE status = 'queued' AND queued_by LIKE 'guest:%' AND queued_at > ?",
+      [hourAgo],
+    ));
+  const perGuest = deps.auth?.guestSubmissionLimit ?? 3;
+  const perHour = deps.auth?.guestHourlyLimit ?? 30;
+  return Math.min(perGuest - own, perHour - lastHour);
+}
+
+async function issueInvite(db: SqlDatabase, workerId: string, viewer: SessionViewer): Promise<Response> {
+  if (!(await db.first('SELECT 1 FROM workers WHERE id = ?', [workerId]))) {
+    return json(404, { error: 'Unknown worker' });
   }
-  if (!recordedAt || !Number.isFinite(Date.parse(recordedAt))) {
-    return json(400, { error: 'recordedAt must be an ISO 8601 timestamp' });
-  }
-  if (!(await db.first('SELECT 1 FROM rings WHERE id = ?', [ringId]))) {
-    return json(404, { error: 'Unknown ring' });
-  }
-  if (!deps.submit) {
+  const code = generateInviteCode();
+  const expiresAt = new Date(Date.now() + INVITE_MS).toISOString();
+  await db.batch([
+    {
+      sql: 'INSERT INTO worker_invites (code_hash, worker_id, expires_at, created_by) VALUES (?, ?, ?, ?)',
+      parameters: [await inviteHash(code), workerId, expiresAt, viewer.subject],
+    },
+    {
+      sql: `INSERT INTO audit_log (id, actor_user_id, action, target_table, target_id, after_json, ts)
+            VALUES (?, ?, 'worker_invite.create', 'worker_invites', ?, ?, ?)`,
+      parameters: [`al-${crypto.randomUUID()}`, viewer.subject, workerId, JSON.stringify({ workerId, expiresAt }), now()],
+    },
+  ]);
+  return json(200, { workerId, code, expiresAt });
+}
+
+async function revokeWallet(db: SqlDatabase, workerId: string, viewer: SessionViewer): Promise<Response> {
+  const at = now();
+  const n = await db.execute('UPDATE wallet_bindings SET revoked_at = ? WHERE worker_id = ? AND revoked_at IS NULL', [
+    at,
+    workerId,
+  ]);
+  if (n === 0) return json(404, { error: 'No wallet is bound to this worker' });
+  await db.execute(
+    `INSERT INTO audit_log (id, actor_user_id, action, target_table, target_id, after_json, ts)
+     VALUES (?, ?, 'wallet_binding.revoke', 'wallet_bindings', ?, ?, ?)`,
+    [`al-${crypto.randomUUID()}`, viewer.subject, workerId, JSON.stringify({ workerId, revokedAt: at }), at],
+  );
+  return json(200, { workerId, revokedAt: at });
+}
+
+async function partnerPull(db: SqlDatabase, deps: GatewayDeps): Promise<Response> {
+  if (!deps.partner) {
     return json(501, {
-      error: 'Submitting runs on a local devnet — start `gateway serve` with MIDNIGHT_NETWORK set.',
+      error: 'Partner pull needs PARTNER_URL, PARTNER_API_KEY and PARTNER_PUBLIC_KEY.',
     });
   }
-  const result = await deps.submit({ ringId, value, recordedAt, tamper });
-  if (!result.ok) return json(409, { error: result.reason });
-  return json(200, result);
+  try {
+    return json(200, await pullPartnerScores(db, deps.partner, deps.fetch ?? fetch));
+  } catch (error) {
+    if (error instanceof PartnerPullError) return json(502, { error: error.message });
+    throw error;
+  }
+}
+
+async function showcaseStatus(db: SqlDatabase): Promise<Record<string, unknown>> {
+  const plan = showcasePlan(new Date());
+  const ringList = SHOWCASE_RING_IDS.map(() => '?').join(', ');
+  const counts = await db.all<{ status: string; n: number }>(
+    `SELECT status, COUNT(*) AS n FROM condition_readings WHERE ring_id IN (${ringList}) GROUP BY status`,
+    [...SHOWCASE_RING_IDS],
+  );
+  const submitted = await count(db, `SELECT COUNT(*) AS n FROM submissions WHERE ring_id IN (${ringList})`, [
+    ...SHOWCASE_RING_IDS,
+  ]);
+  return {
+    workers: SHOWCASE_RING_IDS.length,
+    planned: plan.readings.length,
+    next: { from: plan.from, to: plan.to },
+    readings: Object.fromEntries(counts.map((c) => [c.status, Number(c.n)])),
+    submitted,
+  };
+}
+
+async function showcase(db: SqlDatabase, deps: GatewayDeps, viewer: SessionViewer, method: string): Promise<Response> {
+  if (method === 'GET') return json(200, await showcaseStatus(db));
+  if (method !== 'POST') return json(405, { error: 'Method not allowed' });
+  if (viewer.guestId) return json(403, { error: 'The guest sandbox cannot seed the showcase', code: 'sandbox' });
+  const seeded = await seedShowcase(db);
+  await db.execute(
+    `INSERT INTO audit_log (id, actor_user_id, action, target_table, target_id, after_json, ts)
+     VALUES (?, ?, 'showcase.seed', 'condition_readings', ?, ?, ?)`,
+    [`al-${crypto.randomUUID()}`, viewer.subject, `${seeded.from}..${seeded.to}`, JSON.stringify(seeded), now()],
+  );
+  const queued =
+    deps.submitStaged && deps.config?.submitQueued
+      ? ((await deps.submitStaged({ ringIds: SHOWCASE_RING_IDS, submittedBy: viewer.subject })).queued ?? 0)
+      : 0;
+  return json(200, { ...seeded, queued, status: await showcaseStatus(db) });
 }
 
 export async function handleAdmin(request: Request, deps: GatewayDeps): Promise<Response | null> {
   const url = new URL(request.url);
   if (!ADMIN_PATH.test(url.pathname)) return null;
 
-  const viewer = await authenticate(deps.db, request);
+  const viewer = await authenticate(deps, request);
   if (!viewer) return json(401, { error: 'Unauthorized' });
   if (viewer.role !== 'admin') return json(403, { error: 'Forbidden — admin only' });
 
@@ -420,13 +450,25 @@ export async function handleAdmin(request: Request, deps: GatewayDeps): Promise<
   const kind = seg[1];
   const id = seg[2] ? decodeURIComponent(seg[2]) : null;
 
+  if ((kind === 'rings' || kind === 'workers') && method !== 'GET' && viewer.guestId) {
+    return json(403, { error: 'The guest sandbox cannot change the roster', code: 'sandbox' });
+  }
   if (kind === 'roster' && method === 'GET') return roster(db);
   if (kind === 'rings') return rings(db, method, id, request);
+  if (kind === 'workers' && id && seg[3] === 'invite' && !seg[4]) {
+    return method === 'POST' ? issueInvite(db, id, viewer) : json(405, { error: 'Method not allowed' });
+  }
+  if (kind === 'workers' && id && seg[3] === 'wallet' && !seg[4]) {
+    return method === 'DELETE' ? revokeWallet(db, id, viewer) : json(405, { error: 'Method not allowed' });
+  }
   if (kind === 'workers') return workers(db, method, id, request);
   if (kind === 'staged') {
-    return staged(db, deps, method, url.pathname.slice('/api/staged'.length), request);
+    return staged(db, deps, viewer, method, url.pathname.slice('/api/staged'.length), request);
   }
-  if (kind === 'submit' && method === 'POST') return submit(db, deps, request);
+  if (kind === 'showcase' && !id) return showcase(db, deps, viewer, method);
+  if (kind === 'partner' && id === 'pull' && !seg[3]) {
+    return method === 'POST' ? partnerPull(db, deps) : json(405, { error: 'Method not allowed' });
+  }
 
   return json(404, { error: 'Unknown API route' });
 }

@@ -12,7 +12,7 @@ import {
 } from '@midnight-demo/db';
 import { conditionEntryKey } from '@midnight-demo/shared';
 
-import { handleRead } from '../src/routes.js';
+import { handleRead } from '../src/test-support.js';
 
 const SALT = new Uint8Array(16).fill(0x5a);
 const AUG16_JST = Date.parse('2026-08-16T00:00:00+09:00');

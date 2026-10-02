@@ -1,4 +1,4 @@
-# SADAKO
+# OHAYO!
 
 **作業員のコンディションをオンチェーンに記録する。1 人 1 日 1 値、公開はバンドのみ。**
 
@@ -21,9 +21,9 @@ Midnight Buildathon Track 1「Build Privacy-First Apps on Midnight」提出プ�
 
 記録を公開チェーンに置けば前者は解決するが、後者が完全に壊れる。
 
-## SADAKO がやること
+## OHAYO! がやること
 
-別会社が **1 人 1 日あたり 0〜100 のコンディション値**を算出する。SADAKO はそこから
+別会社が **1 人 1 日あたり 0〜100 のコンディション値**を算出する。OHAYO! はそこから
 先を担い、**3 状態のバンドだけ**を Midnight に記録する。
 
 | 値 | バンド | 意味 |
@@ -72,20 +72,22 @@ cp .env.example .env   # run.sh はファイルの存在だけを見る。中身
 ダッシュボードを配信する。ダッシュボードは常に実際にデプロイされたコントラクトに
 対して動く — seed 済みデータだけのオフラインモードは無い。
 
-<http://localhost:8787> を開き、**ID** 欄に次のいずれかを貼り付ける。
+<http://localhost:8787> を開いてログインする。
 
-| ID | ロール | 見えるもの |
+| 方法 | ロール | 見えるもの |
 |---|---|---|
-| `admin` | 管理者 | 全作業員、データ管理画面、チェーン照合 |
-| `worker-1` | ユーザー | 自分の履歴のみ — **生の 0〜100 の値も含む** |
+| 鍵ハッシュが `ADMIN_WALLET_KEY_HASHES` にあるウォレットで **Lace で接続してログイン** | 管理者 | 全作業員、データ管理画面、チェーン照合 |
+| 同じボタンで、管理者が発行した招待コードを入れる（初回のみ） | ユーザー | 自分の履歴のみ — **生の 0〜100 の値も含む** |
+| **ゲストとして試す**（ローカルでは既定で有効。`GUEST_ENTRY=0` で無効） | サンドボックスの作業員（管理者に切り替え可） | 自分専用の作業員とリング |
 
-**ログイントークンは作業員IDそのもの**（`worker-1`、`worker-2`…）。`admin` だけが
-固定の職員用トークン。ユーザーテーブルもパスワードも無い。現場は 1 か所を前提とし、
-現場という概念は持たない。
+ログインはウォレットで一度限りのチャレンジに署名する（手数料なし）。未登録のウォレットで
+初めて試すと、`ADMIN_WALLET_KEY_HASHES` に設定するための鍵ハッシュが表示される。現場は 1 か所を
+前提とし、現場という概念は持たない。
 
 ロスターは空の状態で始まる。`admin` としてデータ管理画面からリングと作業員
-（id は `worker-1`）を作り、リングを割り当て、「コンディション値を送信
-（devnet）」フォームで値（0〜100）と取得時刻を入力して**送信**を押すと、
+（id は `worker-1`）を作り、リングを割り当てる。`worker-1` でログインし、
+**リング同期**カードからスコア（0〜100）を送る。送り先は partner mock で、OHAYO!
+ではない。`admin` に戻って**パートナーから取得**、続けて**チェーンへ送信**を押すと、
 実際のトランザクションが送信される。UI の「照合」ボタンはデプロイ済み
 コントラクトに対して実際に動く。
 
@@ -105,9 +107,9 @@ Git Bash も WSL も不要な、Docker を直接叩くネイティブ移植版�
 
 | レーン | 内容 |
 |---|---|
-| `./run.sh test` | SDK フリー 6 ワークスペースのユニットテスト 51 件 ＋ `tsc --noEmit` |
+| `./run.sh test` | SDK フリー 7 ワークスペースのユニットテスト 101 件 ＋ `tsc --noEmit` |
 | `./run.sh test_sdk` | Midnight SDK ワークスペースの typecheck ＋ テスト |
-| `./run.sh test_contract` | Compact 0.31.1 で `condition-registry` をコンパイルし、シミュレータで ZK 回路テスト 10 件 |
+| `./run.sh test_contract` | Compact 0.31.1 で `condition-registry` をコンパイルし、シミュレータで ZK 回路テスト 15 件 |
 | `./run.sh db` | 実 libSQL サーバーコンテナに対する ingester の end-to-end |
 
 回路テストは、3 バンドすべての正常系、境界値（60 / 59 / 40 / 39）、`entryKey` の
@@ -126,11 +128,11 @@ Git Bash も WSL も不要な、Docker を直接叩くネイティブ移植版�
 run.sh / run.ps1 / run.bat      Docker ワンコマンドハーネス
 contracts/condition-registry/   Compact コントラクト: submitCondition ＋ witness ＋ 回路テスト
 packages/shared/                commitment、バンド語彙、タイムゾーン計算、hex ユーティリティ
-packages/db/                    SqlDatabase（libSQL）、スキーマ、マイグレーション、サンプル fixture
+packages/db/                    SqlDatabase（libSQL、D1）、スキーマ、マイグレーション、サンプル fixture
 packages/ingester-core/         純粋な取込ロジック: 型、タイムゾーン計算、plan、冪等性
 packages/condition-read/        読み取り側: スコープ解決、band 履歴の組み立て
-packages/midnight-chain/        Midnight SDK 層: ウォレット、provider、submit、deploy、reconcile
-apps/ingester/                  ingester CLI — 設計上 SDK フリー（boundary.test.ts が強制）
+packages/midnight-chain/        Midnight SDK 層: ウォレット、provider、submit、deploy、チェーン読み取り
+apps/ingester/                  ingester CLI ＋ 送信・照合の DB 側 — SDK フリー（boundary.test.ts が強制）
 apps/gateway/                   認可付き read API ＋ ローカル Node サーバー（SPA も配信）
 apps/development/condition-cli/ オンチェーン CLI: deploy / submit / reconcile / status / fund
 apps/dashboard/public/          ビルド不要のフレームワークレス SPA
@@ -147,8 +149,8 @@ WASM も持たない。この境界はテストで強制している。
 **ローカル複製と、正としてのチェーン。** 読み取り API は速度のために `submissions`
 テーブルからバンドを返し、`reconcileSubmissions` が各エントリをチェーンから読み戻して
 `chain_verified_at` を刻む。両者が食い違ったときは**チェーンを正**としてローカル行を
-訂正する。データ管理画面の「ローカル記録を改ざんする」チェックボックスで意図的に
-不一致を作れるので、検知の様子をその場で実演できる。
+訂正する。データ管理画面の送信キューにある「ローカル記録を改ざんする」チェックボックスで
+意図的に不一致を作れるので、検知の様子をその場で実演できる。
 
 データモデル、回路仕様、信頼境界、プライバシー整理表などの詳細は
 [worksite_condition_system.md](worksite_condition_system.md) に。
@@ -177,10 +179,10 @@ WASM も持たない。この境界はテストで強制している。
 
 | 段階 | 内容 |
 |---|---|
-| 現在 | コントラクト ＋ ZK テスト、ingester、ロール別読み取り API、ダッシュボード、ローカル devnet の E2E |
+| 現在 | コントラクト ＋ ZK テスト、ingester、ロール別読み取り API、ダッシュボード、ローカル devnet の E2E。コントラクトは Midnight preprod にデプロイ済み（[手順書](deploy_preprod.md)）。必要なときだけコンテナを起動する Cloudflare workers.dev へのホスティングを実装済み（[手順書](deploy_cloudflare.md)） |
 | 次 | 手入力フィードを別会社 HTTP ソースに置換。DB に用意済みの `salt_epochs` を使った salt ローテーション |
 | その次 | **別会社署名を回路内で検証** — 運用者を信頼ベースから外す。脅威モデルに残る唯一の穴を塞ぐ |
-| 将来 | パブリックテストネットへのデプロイ、作業員向けモバイルビュー、個人を開示せず現場単位の統計を ZK で証明 |
+| 将来 | preprod のコントラクトを使ったホスト版デモ、作業員向けモバイルビュー、個人を開示せず現場単位の統計を ZK で証明 |
 
 ---
 

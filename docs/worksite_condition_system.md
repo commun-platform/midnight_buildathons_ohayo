@@ -1,12 +1,13 @@
-# SADAKO — Design document
+# OHAYO! — Design document
 
 > Records a partner-computed worksite condition value on Midnight and serves a
 > role-scoped three-state view. **This document is the canonical spec for the
 > current repository.**
 >
-> **Hackathon build** — everything runs locally; there is no cloud deployment
-> target. Two roles (admin / worker), a single worksite, and the login token is
-> the worker's id.
+> **Hackathon build** — runs locally (libSQL + a local Midnight devnet, `run.sh e2e`)
+> or hosted on Cloudflare workers.dev against Midnight preprod (D1 + Containers,
+> [`deploy_cloudflare.md`](deploy_cloudflare.md)). Two roles (admin / worker), a single worksite, and login is a Midnight
+> wallet signature (or a guest sandbox).
 >
 > [日本語版](ja/worksite_condition_system.md)
 
@@ -79,7 +80,7 @@ are handled as `round(value × 100)` (0–10000), so the thresholds are 6000 / 4
      │ libSQL / SQLite         │                        │
      │  rings /                │        ┌───────────────▼───────────────┐
      │  ring_worker_map /      │        │ read API (apps/gateway)        │
-     │  workers / worker_pii / │◀──────▶│  token auth → resolve scope →  │
+     │  workers / worker_pii / │◀──────▶│  session auth → resolve scope →│
      │  condition_readings /   │        │  compute entryKeys →           │
      │  submissions            │        │  read the bands                │
      └────────────────────────┘        └───────────────┬───────────────┘
@@ -93,10 +94,10 @@ are handled as `round(value × 100)` (0–10000), so the thresholds are 6000 / 4
 
 | Component | Assumption |
 |---|---|
-| Partner company | The computed value is correct (unsigned today; a partner signature would strengthen this) |
+| Partner company | The computed value is correct. Each value is Ed25519-signed by the partner and verified off-chain when OHAYO! pulls it; the circuit does not check the signature yet |
 | Admin (server / DB owner) | The onboarding root — creates rings and workers and pairs them. Trusted to keep the roster right and to submit the partner's value **unmodified**. The chain guarantees no-tampering-after-submission and non-repudiation, not source authenticity at submission time |
 | Worker attribution | **An operator claim, not a cryptographic binding.** The chain carries only `entryKey` + band + commitment; which ring or worker an entry belongs to comes from the operator's DB |
-| Login tokens | A demo shape: the token *is* the worker id, with `admin` as the one fixed string. No passwords, no sessions. Production would replace this with OIDC |
+| Login | A wallet signature over a one-time challenge. The admin list is operator configuration, and a worker's binding comes from an invite the admin issued — so who a wallet is remains an operator claim. Guest entry, when enabled, lets anyone into a sandbox |
 | Salt holder | Can brute-force a ring's history. The salt is disclosed at audit time (`salt_epochs` records each generation's hash so a rotation stays verifiable) |
 | Band disclosure | Pseudonymous and world-readable. The raw 0–100 never appears |
 
@@ -116,7 +117,7 @@ rings / ring_worker_map /       roster — empty at first; the admin builds it i
 workers / worker_pii            Data admin screen (tests load sample-roster.sql)
 condition_readings              stands in for the partner API — empty at first
                                 (tests load sample-feed.sql; the dashboard's
-                                 submit form needs a chain and returns 501 here)
+                                 queue submit needs a chain and returns 501 here)
       │
       ▼
 apps/ingester   plan → record --local        the real work is in ingester-core:
@@ -169,21 +170,38 @@ Docker. This is the only mode where `submissions` rows carry a real `tx_id` /
 
 Two roles, and no scope machinery — there is only one worksite.
 
-| Role | enum | Token | Sees |
+| Role | enum | Logs in with | Sees |
 |---|---|---|---|
-| 管理者 admin | `admin` | `admin` | Every worker's band history, the Data admin screen, chain reconciliation |
-| ユーザー worker | `worker` | their worker id | Their own history only — **including the raw 0–100 value** |
+| 管理者 admin | `admin` | a Midnight wallet whose key hash is in `ADMIN_WALLET_KEY_HASHES` | Every worker's band history, the Data admin screen, chain reconciliation, work decisions |
+| ユーザー worker | `worker` | a Midnight wallet bound to them with a one-time invite code | Their own history only — **including the raw 0–100 value** |
 
-**Authentication is the token itself** (`apps/gateway/src/auth.ts`):
+**Login is a wallet signature** (Lace, DApp Connector 4.x `signData`; the same scheme
+BACCHIRI runs on preprod):
 
 ```
-Authorization: Bearer <token>
-   token === 'admin'       → admin
-   otherwise               → looked up as workers.id; that worker, or 401
+POST /api/auth/challenge {inviteCode?}   → { challengeId, message }   (one-time, 5 minutes)
+   message = OHAYO-LOGIN-V1 \n origin \n challengeId \n nonce \n issuedAt [\n invite:<sha256 of the code>]
+wallet.signData(message, { encoding: 'text', keyType: 'unshielded' })
+POST /api/auth/verify {challengeId, data, signature, verifyingKey}
+   data === message,
+   schnorr.verify(signature, sha256('midnight_signed_message:<bytes>:' + message), verifyingKey)
+     (the connector-spec prefix Lace adds since lace-extension 2.4.0; @noble/curves, no WASM)
+   keyHash = sha256(verifyingKey)
+   keyHash ∈ ADMIN_WALLET_KEY_HASHES → admin
+   an active wallet_bindings row      → that worker   (the invite creates it)
+   otherwise                          → 403 unregistered, with the keyHash to register
+→ session v1.<payload>.<HMAC-SHA256 under SESSION_SECRET>, 12 hours, sent as Bearer
 ```
 
-There is no users table and no `role_assignments`. This is deliberately minimal
-for a demo; production would swap it for OIDC / sessions.
+`authenticate()` (`apps/gateway/src/auth.ts`) checks the MAC and expiry on every
+request, and that the admin's key hash is still configured or the worker's binding is
+still active — revoking a binding ends its sessions. Signing costs no fee and does not
+depend on the network the wallet is connected to.
+
+**Guest entry** (`GUEST_ENTRY=1`) is a wallet-free sandbox for evaluators: a fresh
+worker and ring per guest, a 2-hour session that can switch between the worker and
+admin personas, no roster changes, submissions limited to the guest's own ring and to
+`GUEST_SUBMISSION_LIMIT` per guest and `GUEST_HOURLY_LIMIT` per hour across guests.
 
 **Only the worker sees their own raw value.** The admin does not —
 `attachOwnConditionValues` in `apps/gateway/src/routes.ts` runs only when
@@ -226,8 +244,10 @@ entryKey = first 31 bytes of SHA-256( utf8(ringId) || be_u64(periodStartMs) || s
 
 ### 4.2 Off-chain DB (`@midnight-demo/db`)
 
-libSQL (a local SQLite file or the docker libSQL server). The schema is the
-single file `packages/db/migrations/0001_condition_schema.sql`.
+libSQL (a local SQLite file or the docker libSQL server) locally, Cloudflare D1 when
+hosted (`@midnight-demo/db/d1`). The schema starts at
+`packages/db/migrations/0001_condition_schema.sql`; changes after the first hosted
+deployment are further numbered files in the same directory.
 
 #### Rings and workers
 
@@ -244,32 +264,56 @@ worker_pii        (worker_id, name)
   device-pairing concept.
 - `ring_worker_map` says who is wearing it. One ring : one worker : one day.
 - `workers` holds only identifiers; names are split into `worker_pii`.
-- `workers.id` doubles as the login token.
+- A worker logs in with a wallet bound through `wallet_bindings` (one active binding per key and per worker); `worker_invites` holds only code hashes; `auth_challenges` holds one-time login challenges; `guest_sessions` holds sandbox guests.
 
 #### Conditions
 
 ```
 condition_readings   (id, ring_id, recorded_at, value, source, entered_by?,
-                      status, skip_reason?, created_at)
+                      status, skip_reason?, external_id?, partner_sig?, last_error?, created_at)
+partner_sync         (source, cursor, synced_at)
 
 submissions          (entry_key, ring_id, period_start_ms, timezone, recorded_at_ms,
                       band, score_commitment_hex, salt_ref?, deployment_id?, submitted_by?,
-                      tx_id?, tx_hash?, block_height?, submitted_at, chain_verified_at?, reconciled_at?)
+                      tx_id?, tx_hash?, block_height?, submitted_at, chain_verified_at?, reconciled_at?,
+                      opening_ciphertext?)
 
 salt_epochs          (id, salt_hash, from_ms, to_ms?, created_at)
 contract_deployments (id, network, address, deployed_at, active)
 audit_log            (id, actor_user_id?, action, target_table, target_id, before_json?, after_json?, ts)
+work_decisions       (id, worker_id, period_start_ms, entry_key?, band?, decision, reason,
+                      decided_by, decided_at, supersedes_id?)
 ```
 
-- `condition_readings` is where the partner feed lands. In this build it is
-  written as a side effect of the Data admin screen's one-shot submit form
-  (`source = 'manual'`), not staged separately.
+- `condition_readings` is where the partner feed lands and the submission queue.
+  **Pull from partner** (`POST /api/partner/pull`, `pullPartnerScores` in
+  `apps/ingester/src/partner.ts`) inserts signature-checked partner values as
+  `source = 'partner_api'`, `status = 'pending'`, with the partner's id in
+  `external_id` (unique — a replay is a duplicate, a changed replay a conflict that
+  is never overwritten) and the signature in `partner_sig`. `partner_sync` holds the
+  partner's cursor. **Submit to chain** moves each queued row to `submitted`,
+  `skipped` (`skip_reason`) or `failed` (`last_error`; retried on the next submit);
+  `queued` is for the hosted runner. Scores come only from workers through the
+  partner: the admin can list, delete, pull and submit readings, but has no way to
+  enter or edit a value. The partner API is in
+  [`partner_mock_api.md`](partner_mock_api.md).
+- The admin never receives a partner row's raw value: `GET /api/staged` returns
+  `value: null` and the band for `source = 'partner_api'`.
 - `submissions` is **the ingester's local copy of the on-chain entries** — one row
   per `(ring, local day)`, keyed by the on-chain `Map` key. The read API serves
   bands from here rather than querying the chain on every request.
 - `chain_verified_at` is stamped by `reconcileSubmissions` once the row has been
   read back from the chain and agrees. It drives the dashboard's
   "⚠ pending / ✓ verified" indicator.
+- `work_decisions` records why an admin let a worker work on a given day
+  (`worked` / `light_duty` / `rested`). It is **append-only**: triggers reject
+  `UPDATE` and `DELETE` (a `DELETE` only goes through for a guest sandbox row,
+  `decided_by` `guest:<id>`, which the nightly reset removes), a correction is a new row whose `supersedes_id` points at the
+  current one (partial unique indexes allow one root per worker-day and one successor
+  per row), and every write also lands in `audit_log`. The server snapshots the day's
+  `band` and `entry_key` from `submissions`; on a `caution` / `danger` day, `worked`
+  and `light_duty` need a reason. Decisions are **not on chain** and not
+  tamper-evident: the operator can rewrite the database.
 - `salt_epochs` stores only each generation's **hash**. The live salt is never in
   the DB.
 
@@ -391,11 +435,16 @@ Three packages plus a CLI:
   `periodStartMs` resolution, planning (entryKey / scoreCommitment / band,
   idempotency). Unit-tested offline.
 - **`apps/ingester`** — the orchestration CLI (`plan` = dry run, `record --local`
-  = write to `submissions`) plus `db.ts`. `boundary.test.ts` enforces that it
-  **never imports the Midnight SDK**.
+  = write to `submissions`) plus `db.ts`, and the DB side of on-chain work:
+  `store.ts`, `submit.ts` (`submitStagedFeed`, `recordOutcomes`) and `reconcile.ts`
+  (`reconcileSubmissions`), which drive any `ConditionChain` (the port declared in
+  `ingester-core`). `boundary.test.ts` enforces that it **never imports the
+  Midnight SDK**.
 - **`packages/midnight-chain`** — the SDK layer: operating wallet, providers,
   `submitCondition` (tx + encrypted private state), `deployConditionRegistry`,
-  the real `indexerConditionReader`, and `reconcileSubmissions`.
+  the real `indexerConditionReader`, and `conditionChain(network, address)` —
+  `submitReadings` (plan, prove, submit; one outcome per reading) and
+  `readConditionEntries`. It does not read or write the database.
 - **`apps/development/condition-cli`** — the CLI over it:
   `deploy` / `submit` / `reconcile` / `status` / `fund` / `wallet` / `funding`.
 
@@ -445,7 +494,7 @@ The chain does not know who may read (bands are world-readable). The read API
 Authorization: Bearer <token>
         │
         ▼
-authenticate()          token → Viewer{role, workerId} (admin is a fixed string)
+authenticate()          session → Viewer{role, workerId} (MAC, expiry, binding)
         │
         ▼
 resolveRingScope()      admin  → every ring
@@ -466,21 +515,23 @@ itself and can only read what the server hands it.
 
 | Method / path | Who | What |
 |---|---|---|
-| `GET /api/config` | no auth | display strings (network name, explorer URL, submit availability) |
-| `GET /api/me` | any | the caller's role and name |
+| `GET /api/config` | no auth | display strings (network name, explorer URL, submit and partner-pull availability) |
+| `GET /api/me` | any | the caller's role, name and current `ringId` |
+| `GET /api/decisions?from=&to=[&workerId=][&history=1]` | admin (any worker), worker (self only) | current work decisions (with `history=1`, superseded ones too) |
+| `POST /api/decisions` | admin | append a work decision `{ workerId, date, decision, reason?, supersedesId? }`; 400 `reason_required`, 409 `stale` when `supersedesId` is not the current decision |
 | `GET /api/conditions/mine` | any | the caller's whole resolved scope |
 | `GET /api/conditions/all` | admin | every ring |
 | `GET /api/conditions/worker/:id` | admin, self | that worker's rings |
 | `POST /api/reconcile` | any (within scope) | re-check the given `entryKeys` against the chain |
 | `GET/POST/PATCH/DELETE /api/{rings,workers}` | admin | roster CRUD |
 | `GET /api/roster` | admin | the joined roster for the Data admin screen |
-| `GET/POST/PATCH/DELETE /api/staged[/:id]` | admin | the `condition_readings` feed |
-| `POST /api/staged/submit` | admin | submit every pending reading on-chain (devnet) |
-| `POST /api/submit` | admin | submit one ad-hoc reading on-chain (devnet) |
+| `GET /api/staged`, `DELETE /api/staged/:id` | admin | the `condition_readings` queue (partner rows: band only); no endpoint enters or edits a value |
+| `POST /api/partner/pull` | admin | pull signed scores from the partner into the queue |
+| `POST /api/staged/submit` | admin | submit every pending / failed reading on-chain (devnet) and record each outcome; `{ tamper: true }` sends a cross-band value to the chain while the local record keeps the worker's value (demo) |
 
 `from` / `to` query parameters bound the range (default: the last 30 days).
-The `/api/staged*` endpoints have no UI in the dashboard — the Data admin
-screen's submit form calls `/api/submit` directly, one reading at a time.
+The Data admin screen's **Submission queue** is the UI for `/api/staged*` and
+`/api/partner/pull`. Scores are entered only by workers, on the ring sync card.
 
 ### 7.3 Dashboard
 
@@ -489,13 +540,18 @@ screen's submit form calls `/api/submit` directly, one reading at a time.
 
 | Screen | admin | worker |
 |---|:-:|:-:|
-| Today — a worker card per person with the day's band | ● | — |
-| Today (self) — the day's band **plus the raw value**, and a month table | — | ● |
-| List — filter by range and worker, entryKey / tx columns, CSV export, verify | ● | — |
-| Data admin — rings and workers CRUD, one-shot on-chain submit | ● | — |
+| Today — a worker card per person with the day's band; caution / danger days show 「判断未記入」 until a work decision is recorded | ● | — |
+| Today (self) — the day's band **plus the raw value**, the work decision and reason (read-only), a month table, and the **ring sync** card that posts a score straight to the partner | — | ● |
+| List — filter by range and worker, work-decision, entryKey and tx columns, CSV export (with the decision and reason), verify | ● | — |
+| Data admin — rings and workers CRUD, the submission queue (pull from partner, submit to chain, tamper option) | ● | — |
 
-- Login is a pasted token: a worker uses their own id (`worker-1`), staff use
-  `admin`.
+- Login is **Lace で接続してログイン** (with an invite code the first time for a
+  worker), or **ゲストとして試す** when guest entry is on; a guest bar switches
+  between the worker and admin personas. The Data admin screen issues invite codes
+  (shown once) and unlinks wallets.
+- The ring sync card sends from the browser to the partner (`PUBLIC_PARTNER_URL`),
+  never through OHAYO! — the value reaches OHAYO! only when the admin pulls. The
+  gateway adds the partner origin to the CSP `connect-src`.
 - The verify button calls `POST /api/reconcile`. Against a devnet it really reads
   the entry back and updates `chain_verified_at`. If the bands disagree, **the
   chain wins** — the local row is corrected and the mismatch is reported.
@@ -507,22 +563,19 @@ An admin can verify at two levels:
 1. **Band reconciliation** — the verify button. Compares `submissions.band` with
    the chain's `entries`. Tampering with the local copy shows up here.
 
-   Reconciliation is **two-phase** (`reconcileSubmissions` with `phased: true`).
-   For a row whose `reconciled_at` is still NULL, the first call stamps
-   `chain_verified_at` / `reconciled_at` from the stored record and returns
-   `localChecked` without reading the chain; only once `reconciled_at` is set does
-   the next call open an `indexerConditionReader` and query the chain directly.
-   **Detecting a mismatch therefore takes two presses** — which is why the first
-   toast reads "press again to check the chain directly".
+   One press reads the chain (`reconcileSubmissions` → `ConditionChain.readEntries`;
+   hosted, the chain runner's `/read`, which needs no synced wallet). A mismatch is
+   reported, the local row is corrected from the chain, and the verification is
+   withdrawn.
 2. **Opening the commitment** — given the salt and a `(scoreCenti, nonce)`
    disclosure, recompute `persistentCommit(scoreCenti, nonce) == scoreCommitment`
    and `entryKey == sha256(ringId || periodStartMs || salt)[0..31]`. That
    establishes the on-chain band really was derived from that value, without
    trusting the operator's server.
 
-The Data admin screen has a "tamper the local record" checkbox that deliberately
-desynchronises the DB from the chain, so the reconcile detection can be
-demonstrated.
+The Data admin screen's submission queue has a "tamper the local record"
+checkbox that deliberately desynchronises the DB from the chain, so the reconcile
+detection can be demonstrated.
 
 ---
 
@@ -537,6 +590,7 @@ demonstrated.
 | Name | — | ○ (`worker_pii`) | ○ | ○ |
 | Ring id | — | ○ | ○ | ○ |
 | Salt | — | hash only | disclosable | — |
+| Work decision and reason | — | ○ (`work_decisions`) | ○ | ○ (own) |
 
 **The chain alone identifies nobody.** It carries a salted-hash `entryKey` with a
 band, a commitment and timestamps. Without the salt, an observer cannot even tell
@@ -549,12 +603,12 @@ which entries belong to the same person.
 ```
 run.sh / run.ps1 / run.bat      one-command Docker harness (tests, dashboard, devnet, end-to-end)
 contracts/condition-registry/   Compact contract: submitCondition + witnesses + circuit tests
-packages/shared/                commitments, band vocabulary, timezone math, hex utils
-packages/db/                    SqlDatabase (libSQL), schema, migrations, local seed
+packages/shared/                band vocabulary, timezone math, hex utils; commitments under ./commitment
+packages/db/                    SqlDatabase (libSQL, D1), schema, migrations, local seed
 packages/ingester-core/         pure ingest logic: types, timezone math, planning, idempotency
 packages/condition-read/        read side: scope resolution, band-history assembly, ConditionReader
-packages/midnight-chain/        Midnight SDK layer: wallet, providers, submit, deploy, reconcile
-apps/ingester/                  ingester CLI: read roster + feed from the DB, build submissions
+packages/midnight-chain/        Midnight SDK layer: wallet, providers, submit, deploy, chain reads
+apps/ingester/                  ingester CLI + DB side of submit / reconcile over the chain port
 apps/gateway/                   authorized read API + the local Node server (also serves the SPA)
 apps/development/condition-cli/ on-chain CLI: deploy / submit / status / fund / …
 apps/dashboard/public/          framework-free SPA
@@ -592,14 +646,19 @@ The only required setting is `INGESTER_SALT_HEX` in `.env` (hex, ≥16 bytes). C
 
 ## 11. Open questions and future work
 
-- **Partner signature** — the provenance of the value rests on trusting the
-  operator. Signing the value at the partner and verifying that signature inside
-  the circuit would remove the operator from the trust base.
+- **Partner signature in the circuit** — values are now Ed25519-signed by the
+  partner and checked when pulled, which stops a forged or altered value from
+  entering the queue. The operator can still submit a different value on-chain;
+  verifying the partner signature inside the circuit would remove the operator from
+  the trust base.
+- **Tamper-evident work decisions** — decisions live only in the database. Anchoring
+  a commitment to each decision on chain would make a rewritten decision detectable.
 - **Salt rotation** — `salt_epochs` is in the schema, but the rotation procedure
   is not implemented.
 - **Missing days** — a day with no reading is simply absent. This build does not
   distinguish "on site but not wearing the ring" from "not working".
 - **Multiple worksites** — one site is assumed. Supporting several would mean
   reintroducing a sites table and ring/worker site assignment.
-- **Authentication** — token-as-worker-id is a demo shortcut: anyone who types
-  another worker's id reads as them. Production needs OIDC / sessions.
+- **Authentication** — wallet login proves control of a key, not who the person is;
+  the binding is the admin's invite. Rate limiting of `/api/auth/*` arrives with the
+  hosted Worker (phase 6).

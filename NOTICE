@@ -1,5 +1,5 @@
-SADAKO — worksite worker-condition system
-Copyright 2026 The SADAKO contributors
+OHAYO! — worksite worker-condition system
+Copyright 2026 The OHAYO! contributors
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -35,3 +35,5 @@ license by the Midnight Foundation / Input Output:
 
 The local devnet compose file under ops/local/ is adapted from
 midnightntwrk/midnight-local-dev.
+
+Portions are ported from BACCHIRI, https://github.com/commun-platform/midnight_buildathons_bacchili (Apache-2.0).

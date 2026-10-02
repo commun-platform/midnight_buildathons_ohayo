@@ -12,7 +12,6 @@ import {
 import {
   classifyConditionCenti,
   conditionEntryKey,
-  conditionScoreCommitment,
   CONDITION_BAND_ORDINAL,
   CONDITION_CAUTION_MIN_CENTI,
   CONDITION_DAY_WINDOW_MS,
@@ -20,6 +19,7 @@ import {
   CONDITION_NORMAL_MIN_CENTI,
   type ConditionBand,
 } from '@midnight-demo/shared';
+import { conditionScoreCommitment } from '@midnight-demo/shared/commitment';
 import { describe, expect, it } from 'vitest';
 
 import {

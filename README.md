@@ -1,4 +1,4 @@
-# SADAKO
+# OHAYO!
 
 **Worker condition, recorded on-chain — one 0–100 value a day, only the band disclosed.**
 
@@ -24,10 +24,10 @@ score is **sensitive, medical-adjacent data**. Two forces pull in opposite direc
 Put the record on a public chain and you solve the first while destroying the
 second.
 
-## What SADAKO does
+## What OHAYO! does
 
 A partner company computes one **0–100 condition value per worker per day**.
-SADAKO takes it from there and puts **only the three-state band** on Midnight:
+OHAYO! takes it from there and puts **only the three-state band** on Midnight:
 
 | Value | Band | Meaning |
 |---|---|---|
@@ -76,20 +76,21 @@ the genesis seed, compiles and deploys the contract, and serves the dashboard
 joined to it. The dashboard always runs against a real deployed contract — there
 is no offline/sample-data mode.
 
-Then open <http://localhost:8787> and paste one of these into the **ID** field:
+Then open <http://localhost:8787> and log in:
 
-| ID | Role | Sees |
+| How | Role | Sees |
 |---|---|---|
-| `admin` | 管理者 admin | every worker, plus the Data admin screen and chain reconciliation |
-| `worker-1` | ユーザー worker | their own history — **including the raw 0–100 value** |
+| **Lace で接続してログイン** with a wallet whose key hash is in `ADMIN_WALLET_KEY_HASHES` | 管理者 admin | every worker, plus the Data admin screen and chain reconciliation |
+| the same button, with the invite code the admin issued (first time only) | ユーザー worker | their own history — **including the raw 0–100 value** |
+| **ゲストとして試す** (on by default locally; `GUEST_ENTRY=0` turns it off) | a sandbox worker, switchable to admin | their own worker and ring |
 
-The login token is just the worker's id — `worker-1`, `worker-2`, … — with
-`admin` as the one fixed staff token. No user table, no passwords: this is a
-demo, and the point is the privacy model, not the login.
+Login signs a one-time challenge with the wallet (no fee); the first attempt with an
+unregistered wallet shows its key hash for `ADMIN_WALLET_KEY_HASHES`.
 
 The roster starts empty — create a ring and a worker (id `worker-1`) from
-データ管理 as `admin`, assign the ring, then use the "コンディション値を送信
-（devnet）" form to enter a value (0–100) and a timestamp and press **送信** —
+データ管理 as `admin` and assign the ring. Log in as `worker-1` and send a score
+(0–100) from the **リング同期** card; it goes straight to the partner mock, not to
+OHAYO! Back as `admin`, press **パートナーから取得** and then **チェーンへ送信** —
 this proves and submits a real transaction. The verify button in the UI
 reconciles the local copy against the deployed contract for real.
 
@@ -109,9 +110,9 @@ port that drives Docker directly, no Git Bash or WSL.
 
 | Lane | What it covers |
 |---|---|
-| `./run.sh test` | 51 unit tests + `tsc --noEmit` across the six SDK-free workspaces |
+| `./run.sh test` | 101 unit tests + `tsc --noEmit` across the seven SDK-free workspaces |
 | `./run.sh test_sdk` | typecheck + tests for the Midnight-SDK workspaces |
-| `./run.sh test_contract` | compiles `condition-registry` with Compact 0.31.1 and runs 10 ZK-circuit tests in the simulator |
+| `./run.sh test_contract` | compiles `condition-registry` with Compact 0.31.1 and runs 15 ZK-circuit tests in the simulator |
 | `./run.sh db` | the ingester end-to-end against a real libSQL server container |
 
 The circuit tests cover the honest path for all three bands, the band boundaries
@@ -131,11 +132,11 @@ checkout on a machine with only Docker reproduces them exactly.
 run.sh / run.ps1 / run.bat      one-command Docker harness
 contracts/condition-registry/   Compact contract: submitCondition + witnesses + circuit tests
 packages/shared/                commitments, band vocabulary, timezone math, hex utils
-packages/db/                    SqlDatabase (libSQL), schema, migrations, sample fixtures
+packages/db/                    SqlDatabase (libSQL, D1), schema, migrations, sample fixtures
 packages/ingester-core/         pure ingest logic: types, timezone math, planning, idempotency
 packages/condition-read/        read side: scope resolution, band-history assembly
-packages/midnight-chain/        Midnight SDK layer: wallet, providers, submit, deploy, reconcile
-apps/ingester/                  ingester CLI — SDK-free by construction (boundary.test.ts)
+packages/midnight-chain/        Midnight SDK layer: wallet, providers, submit, deploy, chain reads
+apps/ingester/                  ingester CLI + DB side of submit / reconcile — SDK-free (boundary.test.ts)
 apps/gateway/                   authorized read API + the local Node server (also serves the SPA)
 apps/development/condition-cli/ on-chain CLI: deploy / submit / reconcile / status / fund
 apps/dashboard/public/          framework-free SPA (no build step)
@@ -153,9 +154,9 @@ WASM-free, and a test enforces that boundary.
 **Local copy, chain as the authority.** The read API serves bands from a
 `submissions` table so the dashboard is fast, and `reconcileSubmissions` re-reads
 each entry from the chain to stamp `chain_verified_at`. When the two disagree,
-**the chain wins** and the local row is corrected. The Data admin screen has a
-"tamper the local record" checkbox that deliberately desynchronises them, so the
-detection can be demonstrated live.
+**the chain wins** and the local row is corrected. The Data admin screen's submission
+queue has a "tamper the local record" checkbox that deliberately desynchronises
+them, so the detection can be demonstrated live.
 
 Full detail — data model, circuit spec, trust boundaries, privacy matrix — is in
 [docs/worksite_condition_system.md](docs/worksite_condition_system.md).
@@ -187,10 +188,10 @@ must stay private.
 
 | Stage | Scope |
 |---|---|
-| Now | Contract + ZK tests, ingester, role-scoped read API, dashboard, local devnet end-to-end |
+| Now | Contract + ZK tests, ingester, role-scoped read API, dashboard, local devnet end-to-end; the contract is deployed on Midnight preprod ([runbook](docs/deploy_preprod.md)); hosting on Cloudflare workers.dev with on-demand containers is built ([runbook](docs/deploy_cloudflare.md)) |
 | Next | Partner HTTP source in place of the manual feed; salt rotation on the `salt_epochs` schema already in the DB |
 | Then | **Partner-signed values verified inside the circuit** — removes the operator from the trust base, the one remaining gap in the threat model |
-| Later | Public testnet deployment; a worker-facing mobile view; site-level aggregate statistics proven in ZK without per-worker disclosure |
+| Later | Hosted demo on the preprod contract; a worker-facing mobile view; site-level aggregate statistics proven in ZK without per-worker disclosure |
 
 ---
 

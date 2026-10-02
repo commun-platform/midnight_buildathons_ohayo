@@ -33,13 +33,25 @@ CREATE TABLE condition_readings (
   value          REAL NOT NULL CHECK (value >= 0 AND value <= 100),
   source         TEXT NOT NULL DEFAULT 'manual' CHECK (source IN ('partner_api', 'manual')),
   entered_by     TEXT,
-  status         TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'submitted', 'skipped')),
-  skip_reason    TEXT CHECK (skip_reason IN ('already_submitted', 'value_superseded', 'ring_unassigned', 'wearer_unknown', 'off_site', 'ambiguous_wearer')),
+  status         TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'queued', 'submitted', 'skipped', 'failed')),
+  skip_reason    TEXT CHECK (skip_reason IN ('already_submitted', 'unknown_ring', 'invalid_value', 'value_superseded', 'ring_unassigned', 'wearer_unknown', 'off_site', 'ambiguous_wearer')),
+  external_id    TEXT UNIQUE,
+  partner_sig    TEXT,
+  last_error     TEXT,
+  queued_by      TEXT,
+  queued_at      TEXT,
+  queued_tamper  INTEGER NOT NULL DEFAULT 0,
   created_at     TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 CREATE INDEX condition_readings_ring ON condition_readings (ring_id, recorded_at);
 CREATE INDEX condition_readings_status ON condition_readings (status);
+
+CREATE TABLE partner_sync (
+  source    TEXT PRIMARY KEY,
+  cursor    TEXT NOT NULL,
+  synced_at TEXT NOT NULL
+);
 
 CREATE TABLE submissions (
   entry_key            TEXT PRIMARY KEY,
@@ -57,7 +69,8 @@ CREATE TABLE submissions (
   block_height         TEXT,
   submitted_at         TEXT NOT NULL,
   chain_verified_at    TEXT,
-  reconciled_at        TEXT
+  reconciled_at        TEXT,
+  opening_ciphertext   TEXT
 );
 
 CREATE INDEX submissions_ring_period ON submissions (ring_id, period_start_ms);
@@ -90,3 +103,70 @@ CREATE TABLE audit_log (
 );
 
 CREATE INDEX audit_log_target ON audit_log (target_table, target_id);
+
+CREATE TABLE work_decisions (
+  id              TEXT PRIMARY KEY,
+  worker_id       TEXT NOT NULL,
+  period_start_ms INTEGER NOT NULL,
+  entry_key       TEXT,
+  band            TEXT,
+  decision        TEXT NOT NULL CHECK (decision IN ('worked', 'light_duty', 'rested')),
+  reason          TEXT NOT NULL,
+  decided_by      TEXT NOT NULL,
+  decided_at      TEXT NOT NULL,
+  supersedes_id   TEXT REFERENCES work_decisions (id)
+);
+
+CREATE INDEX work_decisions_worker_period ON work_decisions (worker_id, period_start_ms);
+CREATE UNIQUE INDEX work_decisions_one_root ON work_decisions (worker_id, period_start_ms) WHERE supersedes_id IS NULL;
+CREATE UNIQUE INDEX work_decisions_one_successor ON work_decisions (supersedes_id) WHERE supersedes_id IS NOT NULL;
+
+CREATE TRIGGER work_decisions_no_update BEFORE UPDATE ON work_decisions BEGIN SELECT RAISE(ABORT, 'work_decisions is append-only'); END;
+CREATE TRIGGER work_decisions_no_delete BEFORE DELETE ON work_decisions BEGIN SELECT RAISE(ABORT, 'work_decisions is append-only'); END;
+
+CREATE TABLE wallet_bindings (
+  id         TEXT PRIMARY KEY,
+  key_hash   TEXT NOT NULL,
+  worker_id  TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  revoked_at TEXT
+);
+
+CREATE UNIQUE INDEX wallet_bindings_active_key ON wallet_bindings (key_hash) WHERE revoked_at IS NULL;
+CREATE UNIQUE INDEX wallet_bindings_active_worker ON wallet_bindings (worker_id) WHERE revoked_at IS NULL;
+
+CREATE TABLE worker_invites (
+  code_hash  TEXT PRIMARY KEY,
+  worker_id  TEXT NOT NULL,
+  expires_at TEXT NOT NULL,
+  used_at    TEXT,
+  created_by TEXT NOT NULL
+);
+
+CREATE TABLE auth_challenges (
+  id          TEXT PRIMARY KEY,
+  message     TEXT NOT NULL,
+  invite_hash TEXT,
+  expires_at  TEXT NOT NULL,
+  used_at     TEXT
+);
+
+CREATE TABLE guest_sessions (
+  id         TEXT PRIMARY KEY,
+  worker_id  TEXT NOT NULL,
+  ring_id    TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  expires_at TEXT NOT NULL
+);
+
+CREATE TABLE chain_jobs (
+  id          TEXT PRIMARY KEY,
+  reading_ids TEXT NOT NULL,
+  status      TEXT NOT NULL CHECK (status IN ('running', 'done', 'failed', 'lost')),
+  stage       TEXT,
+  started_at  TEXT NOT NULL,
+  finished_at TEXT,
+  error       TEXT
+);
+
+CREATE UNIQUE INDEX chain_jobs_one_running ON chain_jobs (status) WHERE status = 'running';

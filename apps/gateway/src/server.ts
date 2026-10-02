@@ -11,17 +11,17 @@ import {
   createDatabase,
   libsqlConfigFromEnv,
   loadConditionMigrations,
-  type SqlDatabase,
 } from '@midnight-demo/db';
+import type { PartnerConfig } from '@midnight-demo/ingester/partner';
+import { resetSandbox } from '@midnight-demo/ingester/showcase';
+import type { ConditionChain } from '@midnight-demo/ingester-core';
 
-import {
-  saltFromHex,
-  type GatewayDeps,
-  type ReconcileFn,
-  type SubmitFn,
-  type SubmitStagedFn,
-} from './deps.js';
+import { authConfigFromEnv } from './auth.js';
+import { reconcileWith, submitStagedWith } from './chain-deps.js';
+import { saltFromHex, type GatewayDeps } from './deps.js';
+import { bytesToHex, hexToBytes } from '@midnight-demo/shared';
 import { handleApi } from './routes.js';
+import { securityHeaders } from './security.js';
 
 const repoRoot = fileURLToPath(new URL('../../../', import.meta.url));
 loadEnv({ path: path.join(repoRoot, '.env'), quiet: true });
@@ -60,92 +60,41 @@ function makeDeps(): GatewayDeps {
     config: {
       network: env.PUBLIC_MIDNIGHT_NETWORK,
       explorerUrl: env.PUBLIC_MIDNIGHT_EXPLORER_URL,
+      partnerUrl: env.PUBLIC_PARTNER_URL?.trim() || env.PARTNER_URL?.trim() || undefined,
+      contractAddress: env.CONDITION_REGISTRY_CONTRACT_ADDRESS?.trim() || undefined,
     },
+    partner: partnerFromEnv(env),
+    auth: authConfigFromEnv(env),
+    ...(env.OPENING_KEY?.trim() ? { openingKeyHex: env.OPENING_KEY.trim() } : {}),
   };
 }
 
-async function reconcileCapability(db: SqlDatabase): Promise<ReconcileFn | undefined> {
+function partnerFromEnv(env: Record<string, string | undefined>): PartnerConfig | undefined {
+  const url = env.PARTNER_URL?.trim();
+  const apiKey = env.PARTNER_API_KEY?.trim();
+  const publicKeyHex = env.PARTNER_PUBLIC_KEY?.trim();
+  return url && apiKey && publicKeyHex ? { url, apiKey, publicKeyHex } : undefined;
+}
+
+async function chainCapability(): Promise<ConditionChain | undefined> {
   const network = process.env.MIDNIGHT_NETWORK?.trim();
   const address = process.env.CONDITION_REGISTRY_CONTRACT_ADDRESS?.trim();
   if (!network || !address) return undefined;
   // @ts-ignore
   const chain = await import('@midnight-demo/midnight-chain').catch(() => null);
   if (!chain) return undefined;
-  const cfg = chain.resolveNetwork(network);
-  return async (entryKeys) => {
-    const r = await chain.reconcileSubmissions(db, cfg, address, {
-      entryKeys: [...entryKeys],
-      phased: true,
-    });
-    return {
-      confirmed: r.confirmed,
-      localChecked: r.localChecked,
-      mismatches: r.mismatches.length,
-      valueMismatches: r.valueMismatches.length,
-      missing: r.missing.length,
-    };
-  };
+  return chain.conditionChain(chain.resolveNetwork(network), address) as ConditionChain;
 }
 
-async function submitCapability(db: SqlDatabase, salt: Uint8Array): Promise<SubmitFn | undefined> {
-  const network = process.env.MIDNIGHT_NETWORK?.trim();
-  const address = process.env.CONDITION_REGISTRY_CONTRACT_ADDRESS?.trim();
-  if (!network || !address) return undefined;
+async function commitmentOpener(): Promise<GatewayDeps['openCommitment']> {
   // @ts-ignore
-  const chain = await import('@midnight-demo/midnight-chain').catch(() => null);
-  if (!chain) return undefined;
-  const cfg = chain.resolveNetwork(network);
-  return async ({ ringId, value, recordedAt, tamper }) => {
-    try {
-      const r = await chain.submitReading(db, cfg, address, {
-        ringId,
-        value,
-        recordedAt,
-        salt,
-        tamper,
-      });
-      return {
-        ok: true as const,
-        entryKey: r.entryKey,
-        ringId: r.ringId,
-        periodStartMs: r.periodStartMs,
-        band: r.band,
-        storedBand: r.storedBand,
-        tampered: r.tampered,
-        txId: r.txId,
-        blockHeight: r.blockHeight,
-        recovered: r.recovered,
-      };
-    } catch (error) {
-      const reason = notPlannableReason(error);
-      if (reason !== null) return { ok: false as const, reason: `not plannable (${reason})` };
-      throw error;
-    }
-  };
+  const commitment = await import('@midnight-demo/shared/commitment').catch(() => null);
+  if (!commitment) return undefined;
+  return async (scoreCenti, nonceHex) =>
+    bytesToHex(commitment.conditionScoreCommitment(scoreCenti, hexToBytes(nonceHex)));
 }
 
-async function submitStagedCapability(
-  db: SqlDatabase,
-  salt: Uint8Array,
-): Promise<SubmitStagedFn | undefined> {
-  const network = process.env.MIDNIGHT_NETWORK?.trim();
-  const address = process.env.CONDITION_REGISTRY_CONTRACT_ADDRESS?.trim();
-  if (!network || !address) return undefined;
-  // @ts-ignore
-  const chain = await import('@midnight-demo/midnight-chain').catch(() => null);
-  if (!chain) return undefined;
-  const cfg = chain.resolveNetwork(network);
-  return () => chain.submitStagedFeed(db, cfg, address, salt);
-}
-
-function notPlannableReason(error: unknown): string | null {
-  if (error instanceof Error && error.name === 'ReadingNotPlannable') {
-    return (error as { reason?: { kind?: string } }).reason?.kind ?? 'unknown';
-  }
-  return null;
-}
-
-async function serveStatic(pathname: string): Promise<Response> {
+async function serveStatic(pathname: string, headers: Record<string, string>): Promise<Response> {
   if (!fs.existsSync(dashboardDir)) return new Response('Not found', { status: 404 });
   const clean = pathname.replace(/\.\.+/g, '').replace(/^\/+/, '');
   const candidate = clean && !clean.endsWith('/') ? path.join(dashboardDir, clean) : '';
@@ -154,9 +103,15 @@ async function serveStatic(pathname: string): Promise<Response> {
     : path.join(dashboardDir, 'index.html');
   const body = await fsp.readFile(file);
   return new Response(body, {
-    headers: { 'content-type': MIME[path.extname(file)] ?? 'application/octet-stream', 'cache-control': 'no-store' },
+    headers: {
+      ...headers,
+      'content-type': MIME[path.extname(file)] ?? 'application/octet-stream',
+      'cache-control': 'no-store',
+    },
   });
 }
+
+const SANDBOX_RESET_MS = 60 * 60_000;
 
 export async function startServer(
   depsInput?: GatewayDeps,
@@ -166,9 +121,24 @@ export async function startServer(
   await applyMigrations(deps.db, loadConditionMigrations()).catch((err) => {
     process.stderr.write(`migration skipped: ${err instanceof Error ? err.message : String(err)}\n`);
   });
-  if (!deps.reconcile) deps.reconcile = await reconcileCapability(deps.db);
-  if (!deps.submit) deps.submit = await submitCapability(deps.db, deps.salt);
-  if (!deps.submitStaged) deps.submitStaged = await submitStagedCapability(deps.db, deps.salt);
+  const chain = deps.reconcile && deps.submitStaged ? undefined : await chainCapability();
+  if (chain) {
+    deps.reconcile ??= reconcileWith(deps.db, chain);
+    deps.submitStaged ??= submitStagedWith(deps.db, chain, deps.salt, deps.openingKeyHex);
+    deps.chain ??= chain;
+  }
+  if (deps.chain) deps.openCommitment ??= await commitmentOpener();
+
+  if (deps.auth?.guestEntry) {
+    setInterval(() => {
+      resetSandbox(deps.db).catch((error: unknown) => {
+        process.stderr.write(`sandbox reset failed: ${error instanceof Error ? error.message : String(error)}
+`);
+      });
+    }, SANDBOX_RESET_MS).unref();
+  }
+
+  const staticHeaders = securityHeaders(deps.config?.partnerUrl);
 
   const server = http.createServer((request, response) => {
     void (async () => {
@@ -188,7 +158,7 @@ export async function startServer(
       });
       const result =
         (await handleApi(fetchRequest, deps)) ??
-        (await serveStatic(new URL(url).pathname));
+        (await serveStatic(new URL(url).pathname, staticHeaders));
       response.writeHead(result.status, Object.fromEntries(result.headers));
       const buf = Buffer.from(await result.arrayBuffer());
       response.end(buf);

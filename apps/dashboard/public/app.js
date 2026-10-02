@@ -3,11 +3,42 @@ const LS_LANG = 'wc_lang';
 
 const T = {
   ja: {
-    title: 'SADAKO', language: '言語', logout: 'ログアウト',
-    login_h: 'ログイン', login_p: 'IDを入力してください。',
-    token: 'ID', connect: 'ログイン',
-    err_token: 'そのIDは無効です。', err_generic: '読み込みに失敗しました。',
+    title: 'OHAYO!', language: '言語', logout: 'ログアウト',
+    login_h: 'ログイン', login_p: 'Midnight ウォレット（Lace）で署名してログインします。署名に手数料はかかりません。',
+    connect: 'Lace で接続してログイン', connecting: 'ウォレットで署名してください…',
+    invite: '招待コード（初回のみ）', invite_ph: 'XXXX-XXXX-XXXX',
+    no_wallet: 'Midnight ウォレット（DApp Connector 4.x）が見つかりません。Lace をインストールするか、ゲストとして試してください。',
+    login_fail: 'ログインできませんでした',
+    unregistered_h: 'このウォレットは未登録です',
+    unregistered_p: '作業員の方は、管理者から受け取った招待コードを入れてもう一度接続してください。管理者の場合は、次の値を ADMIN_WALLET_KEY_HASHES に設定してサーバーを再起動してください。',
+    copy: 'コピー', copied: 'コピーしました',
+    guest_btn: 'ゲストとして試す（ウォレット不要）', guest_p: '評価用のサンドボックスです。あなた専用の作業員とリングが作られ、2 時間で失効します。',
+    guest_bar: 'サンドボックス — 本番のログインはウォレット', persona: '表示中の役',
+    persona_worker: '作業員', persona_admin: '管理者',
+    invite_btn: '招待コード発行', invite_done: '招待コード（一度だけ表示・7 日間有効）', wallet_col: 'ウォレット',
+    wallet_bound: '連携済み', wallet_none: '未連携', revoke: '連携解除', revoke_confirm: 'このウォレット連携を解除しますか？',
+    err_generic: '読み込みに失敗しました。',
     nav_overview: '本日', nav_records: '一覧', nav_data: 'データ管理',
+    nav_verify: '公開検証', verify_link: '公開検証',
+    guide_h: 'デモガイド', guide_do: 'やること', guide_proves: '分かること',
+    guide_measure: ['作業員として「リング同期」カードからスコアを送る（値はパートナーに直接届く）', '0〜100 の生の値を見られるのは、本人とパートナーだけ'],
+    guide_submit: ['「管理者」に切り替え、データ管理で「パートナーから取得」して「チェーンへ送信」し、記録済みになるまで待つ（止まっていたコンテナは数分で起動する）', '管理者にも値は見えない（バンドだけ）。本物の Midnight トランザクションと ZK 証明で記録される'],
+    guide_decide: ['「本日」のカードか「一覧」の行（見本の作業員の過去の日も可）で、危険・注意の作業員の就業判断を理由付きで記録する', '判断は追記のみで、誰がいつ何を理由に決めたかが残る'],
+    guide_public_verify: ['「作業員」に戻って記録の「レシート」を発行し、公開検証で確かめる', 'チェーンだけでは誰のどんな値か分からないが、本人は自分の値を証明できる'],
+    guide_tamper: ['「作業員」で日付を「昨日」にしてスコアを送り、「管理者」で取得して「ローカル記録を改ざんする」を付けて送信し、一覧で照合を押す', '運営者のデータベースの改ざんを、チェーンが見抜く'],
+    verify_h: '公開検証（ログイン不要）',
+    verify_p: 'entryKey かトランザクションのハッシュを入れると、チェーンからエントリを直接読みます。台帳には誰の値かも、値そのものも載っていません。',
+    verify_ph: 'entryKey（数字）または tx ハッシュ', verify_go: 'チェーンを読む', verify_reading: '読み込み中…（チェーン操作用コンテナが止まっていると起動に数十秒かかります）',
+    verify_source: 'チェーンから直接読んだ値', verify_day: '日付', verify_commitment: 'スコアのコミットメント', verify_tx: 'トランザクション', verify_contract: 'コントラクト',
+    verify_nol: '台帳に載っていないもの', nol_workerName: '作業員の名前', nol_ringId: 'リング ID', nol_value: '0〜100 の値',
+    receipt_h: '開示レシートの確認', receipt_p: '作業員から受け取った開示レシート（JSON）を貼ると、その値がチェーン上のコミットメントと一致するかを確かめます。',
+    receipt_check: 'レシートを確かめる', receipt_bad: 'レシートの形式が正しくありません。',
+    receipt_match: (v, d, b) => `${v} は ${d} に記録された「${b}」のエントリと一致します。`,
+    receipt_mismatch: 'このレシートはチェーン上のコミットメントと一致しません。',
+    receipt_issue: 'レシート', receipt_issued_h: '開示レシート',
+    receipt_warn: 'このレシートを渡した相手は、この日のあなたの値と、このエントリがあなたのものであることを知ります。渡すかどうかはあなたが決めます。',
+    receipt_copy: 'コピー', receipt_copied: 'コピーしました', receipt_download: 'ダウンロード', receipt_close: '閉じる', receipt_verify: '公開検証で確かめる',
+    receipt_no_opening: 'この記録には開示用の情報がありません（レシート機能より前に記録されたため）。',
     overview_h: '本日のコンディション',
     from: '開始日', to: '終了日', apply: '適用', all_workers: '全員',
     no_workers: '対象の作業員がいません。',
@@ -23,36 +54,91 @@ const T = {
     records_h: 'コンディション一覧',
     records_p: '独立検証は Node の condition:verify（今後）で。salt はブラウザに渡りません。',
     export_csv: 'CSV 書き出し', verify_btn: '照合', reverify_pending: '未照合を再照合',
-    reconciled_local: 'ローカル記録で照合済み（もう一度押すとチェーンに直接照会）',
     reconciled_chain: 'チェーン直接照会で確認',
     reconcile_error: '照合エラー: バンド／生値がコントラクトと不一致（照合を取り消し）',
     reconcile_fail: '照合に失敗しました。',
     ring: 'リング', worker: '作業員', band: 'バンド',
     unset: '—',
-    submit_h: 'コンディション値を送信（devnet）',
-    submit_p: 'パートナー API の代わりに 1 件の測定値をオンチェーン記録します。生値は非公開で band のみ。',
-    submit_value: 'コンディション値（0–100）', submit_recorded: '取得時刻', submit_btn: '送信',
-    submit_pending: '送信中…（証明生成のため数十秒かかることがあります）',
-    submit_ok: '送信しました', submit_ok_tampered: '送信（記録とチェーンを不一致に）',
-    submit_ok_recovered: 'この記録は既にチェーンにありました（ローカル複製を復元）',
     submit_tamper: 'ローカル記録を改ざんする（デモ）',
-    submit_tamper_hint: '— 入力値をローカル記録に、チェーンには別バンドの値を送信します。次回の照合で不一致として検知されます。',
-    submit_dup: 'この日はすでに送信済みです（1 日 1 件）。',
-    submit_fail: '送信に失敗しました。',
+    submit_tamper_hint: '— 作業員の値はローカル記録に残し、チェーンには別バンドの値を送信します。一覧で照合を押すと不一致として検知されます。',
     data_h: 'データ管理（サーバー管理者）',
-    data_p: 'リング・作業員のロスターをここで管理します。',
+    data_p: 'リング・作業員のロスターと送信キューを管理します。スコアは作業員がリング同期で送り、ここでは取得とチェーンへの送信だけを行います。',
     d_workers: '作業員', d_rings: 'リング', d_records: '記録',
     add: '追加', del: '削除', del_confirm: '削除しますか？', edit: '編集',
     none_yet: 'まだありません。', added: '追加しました', updated: '更新しました', deleted: '削除しました',
     name: '名称',
     req_fail: '処理に失敗しました。',
+    q_h: '送信キュー',
+    sc_h: 'ショーケース', sc_p: '見本の作業員 4 人の過去 7 日分を、本物の preprod トランザクションとして記録します。審査員はチェーンの待ち時間なしに、判断・公開検証・照合を試せます。ゲストのデータは毎晩 03:00 に消えますが、ショーケースは残ります。',
+    sc_seed: 'ショーケースを投入', sc_seeding: '投入中…',
+    sc_status: (done, queued, waiting) => `記録済み ${done} 件 / 送信待ち ${queued} 件 / 未送信 ${waiting} 件`,
+    sc_confirm: (n, from, to) => `${from} 〜 ${to} の ${n} 件（すでにある日は除く）を preprod に記録します。コンテナが数十分動きます。続けますか？`,
+    sc_done: (readings, decisions, queued) => `ショーケース: 計測値 ${readings} 件、判断 ${decisions} 件を追加し、${queued} 件を送信キューに入れました`,
+    q_p: 'パートナーから取得した値と手入力の値です。パートナーの生値はここにも表示しません（バンドのみ）。',
+    q_pull: 'パートナーから取得', q_pulling: '取得中…',
+    q_submit: 'チェーンへ送信', q_submitting: '送信中…（1 件ごとに証明を生成するため時間がかかります）',
+    q_pulled: '取得', q_new: '新規', q_dup: '重複', q_conflict: '衝突', q_badsig: '署名不正',
+    q_invalid: '範囲外', q_unknown_ring: '未登録リング',
+    q_result: '送信結果', q_ok: '記録', q_skip: 'スキップ', q_fail: '失敗',
+    q_tampered: 'ローカル記録とチェーンを不一致にしました（一覧で照合を押すと検知）',
+    q_none: '送信待ちの値はありません。', q_source: '出所', q_status: '状態',
+    q_queued: '処理待ちにしました', q_queued_hint: 'チェーン操作用コンテナが 1 分以内に取り出して送信します（コンテナが止まっていれば起動から始まるため数分かかります）。',
+    job_running: 'チェーンへ送信中', job_done: '前回の送信が完了', job_failed: '前回の送信が失敗', job_lost: '前回の送信を中断（値は処理待ちのまま再送されます）',
+    job_readings: '件', job_refresh: '15 秒ごとに自動更新しています。',
+    src_partner_api: 'パートナー', src_manual: '手入力',
+    st_pending: '送信待ち', st_queued: '処理待ち', st_submitted: '記録済み', st_skipped: 'スキップ', st_failed: '失敗',
+    skip_already_submitted: 'この日は記録済み', skip_unknown_ring: '未登録のリング', skip_invalid_value: '不正な値',
+    sync_h: 'リング同期',
+    sync_p: 'リングのスコアを、パートナー（リングの会社）のサーバーへ直接送ります。OHAYO! には管理者が取得したときに届きます。リング:',
+    sync_score_in: 'スコア（0–100）', sync_day: '日付', sync_today: '今日', sync_yesterday: '昨日',
+    sync_send: 'パートナーへ送信', sync_sending: '送信中…',
+    sync_ok: 'パートナーへ送信しました', sync_fail: 'パートナーへの送信に失敗しました',
+    sync_score: 'パートナーが受け付けたスコア', sync_after: '管理者の取得と送信の後にチェーンへ記録されます。',
+    sync_hint: '0〜100 のスコアを入力して送信します。',
+    dec_h: '就業判断', dec_worked: '就業', dec_light_duty: '軽作業', dec_rested: '休養',
+    dec_none: '判断未記入', dec_reason: '理由', dec_save: '記録する', dec_cancel: 'キャンセル',
+    dec_required_hint: '要注意・危険の日に「就業」「軽作業」とする場合は、理由が必須です。',
+    dec_note: '判断は運用者の DB にだけ記録され、チェーンには載りません。訂正すると新しい行として追記されます。',
+    dec_current: '現在の判断', dec_saved: '就業判断を記録しました', dec_stale: '他の変更があったため、最新の状態を読み込み直しました',
+    dec_fail: '就業判断を記録できませんでした',
   },
   en: {
-    title: 'SADAKO', language: 'Language', logout: 'Sign out',
-    login_h: 'Log in', login_p: 'Enter your ID.',
-    token: 'ID', connect: 'Log in',
-    err_token: 'That ID is not valid.', err_generic: 'Failed to load.',
+    title: 'OHAYO!', language: 'Language', logout: 'Sign out',
+    login_h: 'Log in', login_p: 'Sign in with your Midnight wallet (Lace). Signing costs no fee.',
+    connect: 'Connect Lace and log in', connecting: 'Approve the signature in your wallet…',
+    invite: 'Invite code (first time only)', invite_ph: 'XXXX-XXXX-XXXX',
+    no_wallet: 'No Midnight wallet (DApp Connector 4.x) found. Install Lace, or try it as a guest.',
+    login_fail: 'Login failed',
+    unregistered_h: 'This wallet is not registered',
+    unregistered_p: 'Workers: connect again with the invite code from your admin. Admins: put this value in ADMIN_WALLET_KEY_HASHES and restart the server.',
+    copy: 'Copy', copied: 'Copied',
+    guest_btn: 'Try it as a guest (no wallet)', guest_p: 'An evaluation sandbox: you get your own worker and ring, and it expires in 2 hours.',
+    guest_bar: 'Sandbox — the real login is a wallet', persona: 'Viewing as',
+    persona_worker: 'worker', persona_admin: 'admin',
+    invite_btn: 'Issue invite code', invite_done: 'Invite code (shown once, valid 7 days)', wallet_col: 'Wallet',
+    wallet_bound: 'linked', wallet_none: 'not linked', revoke: 'Unlink', revoke_confirm: 'Unlink this wallet?',
+    err_generic: 'Failed to load.',
     nav_overview: 'Today', nav_records: 'List', nav_data: 'Data admin',
+    nav_verify: 'Public verify', verify_link: 'public verify',
+    guide_h: 'Demo guide', guide_do: 'Do', guide_proves: 'Shows',
+    guide_measure: ['As the worker, send a score from the ring sync card (it goes straight to the partner)', 'only the worker and the partner ever see the raw 0–100 value'],
+    guide_submit: ['Switch to admin, pull from the partner in Data admin, submit to the chain, and wait until the row is recorded (a stopped container takes a few minutes to start)', 'not even the admin sees the value (band only); a real Midnight transaction and ZK proof'],
+    guide_decide: ['From a card on Today or a row in the list (past showcase days work too), record a work decision with a reason for a danger or caution worker', 'decisions are append-only: who decided what, when and why stays on record'],
+    guide_public_verify: ['Back as the worker, issue a receipt for the entry and check it in public verify', 'the chain alone tells nobody who or what, yet the worker can prove their value'],
+    guide_tamper: ['As the worker, send a score dated yesterday; as admin, pull it, tick "tamper the local record", submit, then press verify in the list', "the chain catches a change to the operator's own database"],
+    verify_h: 'Public verify (no login)',
+    verify_p: 'Enter an entryKey or a transaction hash to read the entry straight from the chain. The ledger holds neither whose value it is nor the value itself.',
+    verify_ph: 'entryKey (digits) or tx hash', verify_go: 'Read the chain', verify_reading: 'Reading… (a stopped chain runner takes some seconds to start)',
+    verify_source: 'Read directly from the chain', verify_day: 'Day', verify_commitment: 'Score commitment', verify_tx: 'Transaction', verify_contract: 'Contract',
+    verify_nol: 'Not on the ledger', nol_workerName: "the worker's name", nol_ringId: 'the ring id', nol_value: 'the 0–100 value',
+    receipt_h: 'Check a disclosure receipt', receipt_p: "Paste a disclosure receipt (JSON) a worker gave you to check its value against the commitment on the chain.",
+    receipt_check: 'Check the receipt', receipt_bad: 'That is not a valid receipt.',
+    receipt_match: (v, d, b) => `${v} matches the ${b}-band entry recorded on ${d}.`,
+    receipt_mismatch: 'This receipt does not match the commitment on the chain.',
+    receipt_issue: 'receipt', receipt_issued_h: 'Disclosure receipt',
+    receipt_warn: 'Whoever you give this receipt learns your value for this day and that this entry is yours. Giving it is your choice.',
+    receipt_copy: 'Copy', receipt_copied: 'Copied', receipt_download: 'Download', receipt_close: 'Close', receipt_verify: 'Check it in public verify',
+    receipt_no_opening: 'This record has no disclosure data (it was recorded before receipts existed).',
     overview_h: "Today's condition",
     from: 'From', to: 'To', apply: 'Apply', all_workers: 'All workers',
     no_workers: 'No workers in scope.',
@@ -68,29 +154,53 @@ const T = {
     records_h: 'Condition list',
     records_p: 'Full independent verification runs in Node (condition:verify, planned). The salt is never sent to the browser.',
     export_csv: 'Export CSV', verify_btn: 'verify', reverify_pending: 'Re-verify pending',
-    reconciled_local: 'Verified from the local record (press again to check the chain directly)',
     reconciled_chain: 'Verified against the chain directly',
     reconcile_error: 'Reconcile error: band / raw value disagrees with the contract (verification withdrawn)',
     reconcile_fail: 'Reconciliation failed.',
     ring: 'Ring', worker: 'Worker', band: 'Band',
     unset: '—',
-    submit_h: 'Submit a condition value (devnet)',
-    submit_p: 'A manual stand-in for the partner API — record one reading on-chain. The raw value stays private; only the band is disclosed.',
-    submit_value: 'Condition value (0–100)', submit_recorded: 'Recorded at', submit_btn: 'Submit',
-    submit_pending: 'Submitting… (generating the proof can take tens of seconds)',
-    submit_ok: 'Submitted', submit_ok_tampered: 'Submitted (record vs chain now disagree)',
-    submit_ok_recovered: 'This entry was already on chain (recovered the local copy)',
     submit_tamper: 'Tamper the local record (demo)',
-    submit_tamper_hint: '— the entered value goes into the local record; the chain gets a value from a different band. The next reconcile flags the mismatch.',
-    submit_dup: 'That day is already submitted (one entry per day).',
-    submit_fail: 'Submit failed.',
+    submit_tamper_hint: "— the worker's value stays in the local record; the chain gets a value from a different band. Pressing verify in the list flags the mismatch.",
     data_h: 'Data admin (server administrator)',
-    data_p: 'Manage the roster — rings and workers.',
+    data_p: 'Manage the roster and the submission queue. Workers send scores through ring sync; here you only pull them and submit them to the chain.',
     d_workers: 'Workers', d_rings: 'Rings', d_records: 'Records',
     add: 'Add', del: 'Delete', del_confirm: 'Delete?', edit: 'Edit',
     none_yet: 'None yet.', added: 'Added', updated: 'Updated', deleted: 'Deleted',
     name: 'Name',
     req_fail: 'Request failed.',
+    q_h: 'Submission queue',
+    sc_h: 'Showcase', sc_p: 'Records the last 7 days of four sample workers as real preprod transactions, so judges can try decisions, public verify and verify without waiting for the chain. Guest data is cleared every night at 03:00 JST; the showcase stays.',
+    sc_seed: 'Seed the showcase', sc_seeding: 'Seeding…',
+    sc_status: (done, queued, waiting) => `${done} recorded / ${queued} queued / ${waiting} not sent`,
+    sc_confirm: (n, from, to) => `Record ${n} readings for ${from} to ${to} on preprod (days already there are skipped)? The container runs for tens of minutes.`,
+    sc_done: (readings, decisions, queued) => `Showcase: added ${readings} readings and ${decisions} decisions, queued ${queued}`,
+    q_p: 'Values pulled from the partner and entered by hand. A partner value is never shown here either — band only.',
+    q_pull: 'Pull from partner', q_pulling: 'Pulling…',
+    q_submit: 'Submit to chain', q_submitting: 'Submitting… (a proof per value — this takes a while)',
+    q_pulled: 'Pulled', q_new: 'new', q_dup: 'duplicate', q_conflict: 'conflict', q_badsig: 'bad signature',
+    q_invalid: 'out of range', q_unknown_ring: 'unknown ring',
+    q_result: 'Submitted', q_ok: 'recorded', q_skip: 'skipped', q_fail: 'failed',
+    q_tampered: 'the local record now disagrees with the chain (press verify in the list to catch it)',
+    q_none: 'Nothing waiting to be submitted.', q_source: 'Source', q_status: 'Status',
+    q_queued: 'Queued', q_queued_hint: 'the chain runner picks them up within a minute (a stopped container boots first, so allow a few minutes).',
+    job_running: 'Submitting to the chain', job_done: 'Last submission finished', job_failed: 'Last submission failed', job_lost: 'Last submission was interrupted (its values stay queued and are retried)',
+    job_readings: 'value(s)', job_refresh: 'Refreshing every 15 seconds.',
+    src_partner_api: 'partner', src_manual: 'manual',
+    st_pending: 'pending', st_queued: 'queued', st_submitted: 'recorded', st_skipped: 'skipped', st_failed: 'failed',
+    skip_already_submitted: 'day already recorded', skip_unknown_ring: 'unknown ring', skip_invalid_value: 'invalid value',
+    sync_h: 'Ring sync',
+    sync_p: "Sends your ring's score straight to the partner (the ring company). OHAYO! receives it only when the admin pulls. Ring:",
+    sync_score_in: 'Score (0–100)', sync_day: 'Day', sync_today: 'today', sync_yesterday: 'yesterday',
+    sync_send: 'Send to partner', sync_sending: 'Sending…',
+    sync_ok: 'Sent to the partner', sync_fail: 'Sending to the partner failed',
+    sync_score: 'Score accepted by the partner', sync_after: 'It is recorded on chain after the admin pulls and submits it.',
+    sync_hint: 'Enter a score from 0 to 100 and send it.',
+    dec_h: 'Work decision', dec_worked: 'worked', dec_light_duty: 'light duty', dec_rested: 'rested',
+    dec_none: 'no decision yet', dec_reason: 'Reason', dec_save: 'Record', dec_cancel: 'Cancel',
+    dec_required_hint: 'Letting someone work or do light duty on a caution or danger day needs a reason.',
+    dec_note: "Decisions live only in the operator's database, not on chain. A correction is appended as a new row.",
+    dec_current: 'Current decision', dec_saved: 'Work decision recorded', dec_stale: 'Something changed meanwhile — reloaded the latest state',
+    dec_fail: 'Could not record the work decision',
   },
 };
 
@@ -104,6 +214,7 @@ const state = {
   lang: localStorage.getItem(LS_LANG) || 'ja',
   me: null,
   cfg: { network: null, explorerUrl: null },
+  queueTimer: null,
 };
 const t = (k) => T[state.lang][k] ?? k;
 const bandOf = (b) => (b ? BAND[state.lang][b] || b : '—');
@@ -252,8 +363,6 @@ async function reconcile(entryKeys, after) {
     const r = await api('/api/reconcile', { method: 'POST', body: { entryKeys } });
     if (r.valueMismatches || r.mismatches) {
       toast(`${t('reconcile_error')}: ${(r.valueMismatches || 0) + (r.mismatches || 0)}`, 'err');
-    } else if (r.localChecked) {
-      toast(`${t('reconciled_local')}: ${r.localChecked}`, 'ok');
     } else {
       toast(`${t('reconciled_chain')}: ${r.confirmed}`, 'ok');
     }
@@ -320,10 +429,129 @@ function ellipCell(text, { href = null } = {}) {
   return h('td', { class: 'ellip-td' }, h('div', { class: 'ellip-row' }, inner));
 }
 function verifiedCell(entry) {
-  return h('button', {
-    class: entry.verified ? 'reverify done' : 'reverify', type: 'button', title: t('some_pending'),
-    onclick: (e) => { e.stopPropagation(); reconcile([entry.entryKey], () => route()); },
-  }, entry.verified ? '✓ ' : '⚠ ', t('verify_btn'));
+  return h('span', { class: 'verify-cell' },
+    h('button', {
+      class: entry.verified ? 'reverify done' : 'reverify', type: 'button', title: t('some_pending'),
+      onclick: (e) => { e.stopPropagation(); reconcile([entry.entryKey], () => route()); },
+    }, entry.verified ? '✓ ' : '⚠ ', t('verify_btn')),
+    state.cfg.publicVerifyEnabled && h('a', {
+      class: 'small', href: `#/verify?entryKey=${encodeURIComponent(entry.entryKey)}`,
+      onclick: (e) => e.stopPropagation(),
+    }, t('verify_link')));
+}
+
+async function publicApi(path, opts = {}) {
+  const res = await fetch(path, {
+    method: opts.method || 'GET',
+    headers: opts.body != null ? { 'Content-Type': 'application/json' } : {},
+    body: opts.body != null ? JSON.stringify(opts.body) : undefined,
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw Object.assign(new Error(data.error || String(res.status)), { body: data, status: res.status });
+  return data;
+}
+
+function entryCard(entry) {
+  const txLink = entry.tx && txExplorerUrl(entry.tx.txHash);
+  const row = (label, value) => h('div', { class: 'kv' }, h('span', { class: 'muted small' }, label), value);
+  return h('div', { class: 'card verify-result' },
+    h('div', { class: 'verify-band' }, h('span', { class: `chip huge ${entry.band}` }, bandOf(entry.band)),
+      h('span', { class: 'muted small' }, t('verify_source'))),
+    row(t('verify_day'), h('span', {}, entry.periodDate)),
+    row(t('recorded'), h('span', { class: 'mono small' }, entry.recordedAt)),
+    row('entryKey', h('span', { class: 'mono small ellip', title: entry.entryKey }, entry.entryKey)),
+    row(t('verify_commitment'), h('span', { class: 'mono small ellip', title: entry.scoreCommitmentHex }, entry.scoreCommitmentHex)),
+    entry.tx && row(t('verify_tx'), txLink
+      ? h('a', { class: 'mono small ellip ext', href: txLink, target: '_blank', rel: 'noreferrer' }, entry.tx.txHash)
+      : h('span', { class: 'mono small ellip' }, entry.tx.txHash)),
+    entry.contractAddress && row(t('verify_contract'), h('span', { class: 'mono small ellip', title: entry.contractAddress }, entry.contractAddress)),
+    h('div', { class: 'not-on-ledger' }, h('strong', {}, t('verify_nol')), ': ',
+      entry.notOnLedger.map((k) => t(`nol_${k}`)).join(' / ')));
+}
+
+async function viewVerify() {
+  const params = new URLSearchParams(location.hash.split('?')[1] || '');
+  const input = h('input', { type: 'text', class: 'mono', placeholder: t('verify_ph'), value: params.get('entryKey') || params.get('tx') || '' });
+  const result = h('div', {});
+  const lookup = async () => {
+    const ref = input.value.trim();
+    if (!ref) return;
+    result.replaceChildren(h('p', { class: 'muted' }, t('verify_reading')));
+    const q = /^\d+$/.test(ref) ? `entryKey=${encodeURIComponent(ref)}` : `tx=${encodeURIComponent(ref)}`;
+    try {
+      result.replaceChildren(entryCard(await publicApi(`/api/public/entry?${q}`)));
+    } catch (e) {
+      result.replaceChildren(banner(e.message));
+    }
+  };
+  const receiptBox = h('textarea', { rows: '7', class: 'mono small', placeholder: '{ "v": 1, "entryKey": "…", … }' });
+  const handedReceipt = state.handedReceipt;
+  state.handedReceipt = null;
+  if (handedReceipt) receiptBox.value = handedReceipt;
+  const receiptResult = h('div', {});
+  const check = async () => {
+    let receipt;
+    try { receipt = JSON.parse(receiptBox.value); } catch { receiptResult.replaceChildren(banner(t('receipt_bad'))); return; }
+    receiptResult.replaceChildren(h('p', { class: 'muted' }, t('verify_reading')));
+    try {
+      const r = await publicApi('/api/public/receipt', { method: 'POST', body: { receipt } });
+      receiptResult.replaceChildren(
+        r.matches
+          ? h('div', { class: 'card receipt-ok' }, h('strong', {}, t('receipt_match')(fmtValue(r.value), r.entry.periodDate, bandOf(r.entry.band))))
+          : banner(t('receipt_mismatch')),
+        entryCard(r.entry));
+    } catch (e) {
+      receiptResult.replaceChildren(banner(e.status === 400 ? t('receipt_bad') : e.message));
+    }
+  };
+  mount(
+    h('h1', {}, t('verify_h')),
+    h('p', { class: 'muted' }, t('verify_p')),
+    h('form', { class: 'verify-form', onsubmit: (ev) => { ev.preventDefault(); lookup(); } },
+      input, h('button', { class: 'btn', type: 'submit' }, t('verify_go'))),
+    result,
+    h('h2', {}, t('receipt_h')),
+    h('p', { class: 'muted' }, t('receipt_p')),
+    receiptBox,
+    h('div', { class: 'queue-actions' }, h('button', { class: 'btn secondary', type: 'button', onclick: check }, t('receipt_check'))),
+    receiptResult,
+  );
+  if (input.value) lookup();
+  if (handedReceipt) check();
+}
+
+async function issueReceipt(entryKey) {
+  let receipt;
+  try {
+    receipt = await api('/api/disclosures', { method: 'POST', body: { entryKey } });
+  } catch (e) {
+    if (String(e.message) === 'unauthorized') return;
+    toast(e.body && e.body.code === 'no_opening' ? t('receipt_no_opening') : (e.body && e.body.error) || t('req_fail'), 'err');
+    return;
+  }
+  const text = JSON.stringify(receipt, null, 2);
+  const dlg = h('dialog', { class: 'decision-dialog' });
+  const close = () => { dlg.close(); dlg.remove(); };
+  const download = () => {
+    const url = URL.createObjectURL(new Blob([text], { type: 'application/json' }));
+    const a = h('a', { href: url, download: `ohayo-receipt-${receipt.periodDate}.json` });
+    document.body.append(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  };
+  dlg.append(
+    h('h2', {}, t('receipt_issued_h')),
+    h('p', { class: 'muted small' }, t('receipt_warn')),
+    h('pre', { class: 'receipt-json mono small' }, text),
+    h('div', { class: 'queue-actions' },
+      h('button', { class: 'btn', type: 'button', onclick: async () => { await navigator.clipboard.writeText(text); toast(t('receipt_copied'), 'ok'); } }, t('receipt_copy')),
+      h('button', { class: 'btn secondary', type: 'button', onclick: download }, t('receipt_download')),
+      h('a', { class: 'btn secondary', href: '#/verify', onclick: () => { state.handedReceipt = text; close(); } }, t('receipt_verify')),
+      h('button', { class: 'btn secondary', type: 'button', onclick: close }, t('receipt_close'))),
+  );
+  document.body.append(dlg);
+  dlg.showModal();
 }
 function pendingButtons(entries) {
   const pending = entries.filter((e) => !e.verified).map((e) => e.entryKey);
@@ -334,31 +562,188 @@ function pendingButtons(entries) {
       `${t('reverify_pending')} (${pending.length})`),
   ];
 }
+async function postPublic(path, body, token) {
+  const res = await fetch(path, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    body: JSON.stringify(body || {}),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw Object.assign(new Error(data.error || String(res.status)), { body: data, status: res.status });
+  return data;
+}
+
+function midnightWallet() {
+  const injected = window.midnight || {};
+  return Object.values(injected).find((w) => w && typeof w === 'object'
+    && typeof w.connect === 'function' && /^4\./.test(String(w.apiVersion || ''))) || null;
+}
+
+async function startSession(r) {
+  setToken(r.session);
+  state.me = null;
+  location.hash = '#/overview';
+  await route();
+}
+
+async function walletLogin(inviteCode) {
+  const wallet = midnightWallet();
+  if (!wallet) throw Object.assign(new Error(t('no_wallet')), { body: {} });
+  const connected = await wallet.connect(state.cfg.walletNetworkId || 'preprod');
+  if (typeof connected.getConnectionStatus === 'function') {
+    const status = await connected.getConnectionStatus();
+    if (status && status.status && status.status !== 'connected') throw new Error(t('login_fail'));
+  }
+  if (typeof connected.signData !== 'function') throw new Error(t('no_wallet'));
+  const challenge = await postPublic('/api/auth/challenge', inviteCode ? { inviteCode } : {});
+  const signed = await connected.signData(challenge.message, { encoding: 'text', keyType: 'unshielded' });
+  const r = await postPublic('/api/auth/verify', {
+    challengeId: challenge.challengeId,
+    data: signed.data,
+    signature: signed.signature,
+    verifyingKey: signed.verifyingKey,
+  });
+  await startSession(r);
+}
+
+function unregisteredPanel(keyHash) {
+  const copy = h('button', { class: 'btn secondary sm', type: 'button', onclick: async () => {
+    try { await navigator.clipboard.writeText(keyHash); toast(t('copied'), 'ok'); } catch { }
+  } }, t('copy'));
+  return h('div', { class: 'banner warn' },
+    h('strong', {}, t('unregistered_h')),
+    h('p', {}, t('unregistered_p')),
+    h('code', { class: 'mono small key-hash' }, keyHash), ' ', copy);
+}
+
 function viewLogin() {
-  const input = h('input', { id: 'id-input', type: 'text', autocomplete: 'off', spellcheck: 'false', value: state.token });
-  const err = h('div');
+  const status = h('div');
+  const invite = h('input', { id: 'invite-input', type: 'text', autocomplete: 'off', spellcheck: 'false', placeholder: t('invite_ph') });
+  const connectBtn = h('button', { class: 'btn', type: 'submit' }, t('connect'));
   const submit = async (e) => {
     e.preventDefault();
-    err.replaceChildren();
-    setToken(input.value.trim());
+    status.replaceChildren();
+    connectBtn.disabled = true;
+    connectBtn.textContent = t('connecting');
     try {
-      state.me = await api('/api/me');
-      location.hash = home();
-    } catch {
-      setToken('');
-      err.replaceChildren(banner(t('err_token')));
+      await walletLogin(invite.value.trim());
+    } catch (err) {
+      const body = err.body || {};
+      if (body.code === 'unregistered' && body.keyHash) status.replaceChildren(unregisteredPanel(body.keyHash));
+      else status.replaceChildren(banner(`${t('login_fail')}: ${err.message}`));
+    } finally {
+      connectBtn.disabled = false;
+      connectBtn.textContent = t('connect');
     }
   };
+  const guest = state.cfg.guestEntry
+    ? h('div', { class: 'guest-entry' },
+        h('button', { class: 'btn secondary', type: 'button', onclick: async (ev) => {
+          ev.currentTarget.disabled = true;
+          try { await startSession(await postPublic('/api/auth/guest')); }
+          catch (err) { status.replaceChildren(banner(`${t('login_fail')}: ${err.message}`)); ev.currentTarget.disabled = false; }
+        } }, t('guest_btn')),
+        h('p', { class: 'muted small' }, t('guest_p')))
+    : null;
   mount(
     h('form', { class: 'card login', onsubmit: submit },
       h('h1', {}, t('login_h')),
       h('p', { class: 'muted' }, t('login_p')),
-      err,
-      h('label', { for: 'id-input' }, t('token')),
-      input,
-      h('button', { class: 'btn', type: 'submit' }, t('connect')),
+      status,
+      midnightWallet() ? null : h('p', { class: 'muted small' }, t('no_wallet')),
+      h('label', { for: 'invite-input' }, t('invite')),
+      invite,
+      connectBtn,
+      guest,
     ),
   );
+}
+
+function guestBar() {
+  const existing = document.getElementById('guest-bar');
+  if (!state.me || !state.me.guest) { if (existing) existing.remove(); return; }
+  const persona = (role) => h('button', {
+    class: `btn sm ${state.me.role === role ? '' : 'secondary'}`, type: 'button',
+    onclick: async () => {
+      if (state.me.role === role) return;
+      try { await startSession(await postPublic('/api/auth/guest/persona', { role }, state.token)); }
+      catch (err) { toast(err.message, 'err'); }
+    },
+  }, t(`persona_${role}`));
+  const bar = h('div', { id: 'guest-bar', class: 'guest-bar' },
+    h('span', {}, t('guest_bar')),
+    h('span', { class: 'persona' }, `${t('persona')}:`, persona('worker'), persona('admin')));
+  if (existing) existing.replaceWith(bar);
+  else document.querySelector('.app-header').after(bar);
+}
+
+const DECISION_KEYS = ['worked', 'light_duty', 'rested'];
+const needsDecision = (band) => band === 'caution' || band === 'danger';
+const decisionKey = (workerId, date) => `${workerId}|${date}`;
+
+async function loadDecisions(from, to, workerId) {
+  const q = `from=${from}&to=${to}${workerId ? `&workerId=${encodeURIComponent(workerId)}` : ''}`;
+  const r = await api(`/api/decisions?${q}`).catch((e) => {
+    if (String(e.message) === 'unauthorized') throw e;
+    return { decisions: [] };
+  });
+  return new Map(r.decisions.map((d) => [decisionKey(d.workerId, d.date), d]));
+}
+
+function decisionChip(d, onclick) {
+  const label = d ? `${t('dec_h')}: ${t(`dec_${d.decision}`)}` : t('dec_none');
+  const props = { class: `chip decision ${d ? `dec-${d.decision}` : 'dec-none'}`, title: d && d.reason ? d.reason : '' };
+  if (!onclick) return h('span', props, label);
+  return h('button', { ...props, type: 'button', onclick: (ev) => { ev.stopPropagation(); onclick(); } }, label);
+}
+
+function openDecisionDialog({ workerId, who, date, band, current }) {
+  const dlg = h('dialog', { class: 'decision-dialog' });
+  const close = () => { dlg.close(); dlg.remove(); };
+  const radios = DECISION_KEYS.map((k) => {
+    const r = h('input', { type: 'radio', name: 'decision', value: k, required: true });
+    if (current && current.decision === k) r.checked = true;
+    return h('label', { class: 'dec-opt' }, r, t(`dec_${k}`));
+  });
+  const reason = h('textarea', { name: 'reason', rows: '3', maxlength: '500' });
+  reason.value = current ? current.reason : '';
+  const saveBtn = h('button', { class: 'btn', type: 'submit' }, t('dec_save'));
+  const form = h('form', {
+    onsubmit: async (ev) => {
+      ev.preventDefault();
+      const decision = new FormData(form).get('decision');
+      saveBtn.disabled = true;
+      try {
+        await api('/api/decisions', {
+          method: 'POST',
+          body: { workerId, date, decision, reason: reason.value, supersedesId: current ? current.id : null },
+        });
+        toast(t('dec_saved'), 'ok');
+        close();
+        route();
+      } catch (e) {
+        if (String(e.message) === 'unauthorized') return;
+        const body = e.body || {};
+        if (body.code === 'stale') { toast(t('dec_stale'), 'warn'); close(); route(); return; }
+        toast(body.code === 'reason_required' ? t('dec_required_hint') : body.error || t('dec_fail'), 'err');
+        saveBtn.disabled = false;
+      }
+    },
+  },
+    h('h2', {}, t('dec_h')),
+    h('p', {}, h('strong', {}, who), ' · ', date, ' ', bandChip(band)),
+    current && h('p', { class: 'muted small' }, `${t('dec_current')}: ${t(`dec_${current.decision}`)}${current.reason ? ` — ${current.reason}` : ''}`),
+    h('div', { class: 'dec-opts' }, radios),
+    h('label', { class: 'dec-reason' }, t('dec_reason'), reason),
+    needsDecision(band) && h('p', { class: 'muted small' }, t('dec_required_hint')),
+    h('p', { class: 'muted small' }, t('dec_note')),
+    h('div', { class: 'dialog-actions' },
+      h('button', { class: 'btn secondary', type: 'button', onclick: close }, t('dec_cancel')),
+      saveBtn));
+  dlg.append(form);
+  dlg.addEventListener('cancel', () => dlg.remove());
+  document.body.append(dlg);
+  dlg.showModal();
 }
 
 function todayEntry(w) {
@@ -366,12 +751,15 @@ function todayEntry(w) {
   return w.entries.find((e) => fmtDay(e.periodStartMs, w.timezone) === today) || null;
 }
 
-function workerCard(w) {
+function workerCard(w, decisions) {
   const te = todayEntry(w);
+  const today = todayYmd();
+  const current = w.workerId ? decisions.get(decisionKey(w.workerId, today)) : null;
+  const showDecision = w.workerId && (current || (te && needsDecision(te.band)));
   const target = !w.workerId
     ? ''
     : canRecords()
-      ? `#/records?worker=${encodeURIComponent(w.workerId)}&from=${thisYm()}-01T00:00&to=${toLocalInput(Date.now())}`
+      ? `#/records?worker=${encodeURIComponent(w.workerId)}&from=${recordsFrom()}&to=${toLocalInput(Date.now())}`
       : `#/worker/${w.workerId}`;
   return h('div', {
     class: `card worker-card today-${te ? te.band : 'none'}`, role: 'button', tabindex: '0',
@@ -385,6 +773,10 @@ function workerCard(w) {
         : h('span', { class: 'chip big none' }, t('today_pending')),
       te && !te.verified && h('span', { class: 'pending' }, '⚠ ' + t('some_pending')),
     ),
+    showDecision && h('div', { class: 'decision-block' },
+      decisionChip(current, () => openDecisionDialog({
+        workerId: w.workerId, who: whoLabel(w), date: today, band: te ? te.band : null, current,
+      }))),
   );
 }
 
@@ -405,6 +797,7 @@ async function viewOverview() {
   mount(h('div', { class: 'loading' }, '…'));
   const data = await loadConditions(null, `/api/conditions/mine?from=${today}&to=${today}`);
   if (!data) return;
+  const decisions = await loadDecisions(today, today);
 
   const byWorker = new Map();
   for (const r of data.rings) {
@@ -413,7 +806,7 @@ async function viewOverview() {
     byWorker.get(key).entries.push(...r.entries);
   }
   const sections = byWorker.size
-    ? [h('div', { class: 'grid' }, [...byWorker.values()].map((w) => workerCard(w)))]
+    ? [h('div', { class: 'grid' }, [...byWorker.values()].map((w) => workerCard(w, decisions)))]
     : [h('p', { class: 'muted' }, t('no_workers'))];
 
   mount(h('h1', {}, t('overview_h')), h('p', { class: 'muted' }, today), ...sections);
@@ -456,6 +849,50 @@ function monthPicker(ym, nav) {
   return { ySel, mSel };
 }
 
+function ringSyncCard() {
+  if (!state.cfg.partnerUrl || !state.me || !state.me.ringId) return null;
+  const score = h('input', { name: 'score', type: 'number', min: '0', max: '100', step: '0.01', required: true });
+  const day = h('select', { name: 'day' },
+    h('option', { value: '0' }, t('sync_today')),
+    h('option', { value: '1' }, t('sync_yesterday')));
+  const result = h('p', { class: 'sync-result muted' }, t('sync_hint'));
+  const send = async (form) => {
+    const btn = form.querySelector('button[type=submit]');
+    btn.disabled = true;
+    btn.textContent = t('sync_sending');
+    try {
+      const res = await fetch(new URL('/v1/measurements', state.cfg.partnerUrl), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ringId: state.me.ringId,
+          measuredAt: new Date(Date.now() - Number(day.value) * 86_400_000).toISOString(),
+          score: Number(score.value),
+        }),
+      });
+      const r = await res.json().catch(() => null);
+      if (!res.ok) throw new Error((r && r.error) || String(res.status));
+      result.className = 'sync-result';
+      result.replaceChildren(h('strong', {}, `${t('sync_score')}: ${fmtValue(r.score)}`), ' — ', t('sync_after'));
+      toast(t('sync_ok'), 'ok');
+      score.value = '';
+    } catch (e) {
+      toast(`${t('sync_fail')}: ${e.message}`, 'err');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = t('sync_send');
+    }
+  };
+  return h('form', { class: 'card ring-sync', onsubmit: (ev) => { ev.preventDefault(); send(ev.currentTarget); } },
+    h('h2', {}, t('sync_h')),
+    h('p', { class: 'muted' }, t('sync_p'), ' ', h('span', { class: 'mono' }, state.me.ringId)),
+    h('div', { class: 'submit-row' },
+      h('label', {}, t('sync_score_in'), score),
+      h('label', {}, t('sync_day'), day),
+      h('button', { class: 'btn', type: 'submit' }, t('sync_send'))),
+    result);
+}
+
 async function viewWorkerSelf() {
   const workerId = state.me.workerId;
   const ym = ymFromHash();
@@ -464,8 +901,10 @@ async function viewWorkerSelf() {
   mount(h('div', { class: 'loading' }, '…'));
 
   let monthData;
+  let decisions;
   try {
     monthData = await api(`/api/conditions/worker/${workerId}?from=${mr.from}&to=${mr.to}`);
+    decisions = await loadDecisions(mr.from, today > mr.to ? mr.to : today);
   } catch (e) {
     if (String(e.message) === 'unauthorized') return;
     mount(banner(t('err_generic')));
@@ -481,6 +920,7 @@ async function viewWorkerSelf() {
     te = td?.rings.flatMap((r) => r.entries)[0] || null;
   }
 
+  const todayDecision = decisions.get(decisionKey(workerId, today));
   const todayCard = h('div', { class: `card self-today band-${te ? te.band : 'none'}` },
     h('div', { class: 'self-today-date' }, today),
     te
@@ -489,6 +929,9 @@ async function viewWorkerSelf() {
           showValue && te.value != null && h('span', { class: 'self-today-value' }, fmtValue(te.value)),
           !te.verified && h('span', { class: 'pending' }, '⚠ ' + t('some_pending')))
       : h('div', { class: 'self-today-body muted' }, t('today_none')),
+    todayDecision && h('div', { class: 'self-decision' },
+      decisionChip(todayDecision),
+      todayDecision.reason && h('span', { class: 'muted' }, todayDecision.reason)),
   );
 
   const [selY, selM] = ym.split('-').map(Number);
@@ -498,9 +941,14 @@ async function viewWorkerSelf() {
   const rows = entries.map((e) => h('tr', {},
     h('td', {}, fmtDay(e.periodStartMs, tz)),
     h('td', {}, bandChip(e.band)),
+    h('td', {}, (() => {
+      const d = decisions.get(decisionKey(workerId, fmtDay(e.periodStartMs, tz)));
+      return d ? h('span', {}, decisionChip(d), d.reason ? h('div', { class: 'muted small' }, d.reason) : null) : '—';
+    })()),
     showValue && h('td', { class: 'mono' }, e.value != null ? fmtValue(e.value) : '—'),
     h('td', {}, fmtTime(e.recordedAtMs, tz)),
     h('td', {}, verifiedCell(e)),
+    state.cfg.receiptsEnabled && h('td', {}, h('button', { class: 'reverify', type: 'button', onclick: () => issueReceipt(e.entryKey) }, t('receipt_issue'))),
   ));
 
   const monthLabel = state.lang === 'ja' ? `${selY}年${selM}月の記録` : `${ym}${t('month_h')}`;
@@ -508,15 +956,17 @@ async function viewWorkerSelf() {
   mount(
     h('h1', {}, t('self_h')),
     todayCard,
+    ringSyncCard(),
     picker,
     h('h2', {}, monthLabel),
     showValue ? h('p', { class: 'muted' }, t('value_note')) : false,
     entries.length
       ? h('div', { class: 'table-wrap' }, h('table', {},
           h('thead', {}, h('tr', {},
-            h('th', {}, t('day')), h('th', {}, t('band')),
+            h('th', {}, t('day')), h('th', {}, t('band')), h('th', {}, t('dec_h')),
             showValue && h('th', {}, t('value')),
-            h('th', {}, t('recorded')), h('th', {}, t('verified')))),
+            h('th', {}, t('recorded')), h('th', {}, t('verified')),
+            state.cfg.receiptsEnabled && h('th', {}, t('receipt_issue')))),
           h('tbody', {}, rows)))
       : h('p', { class: 'muted' }, t('no_entries')),
   );
@@ -566,10 +1016,16 @@ async function viewWorker(workerId) {
   );
 }
 
+function recordsFrom() {
+  const monthStart = `${thisYm()}-01T00:00`;
+  const twoWeeks = `${toLocalInput(Date.now() - 14 * 86_400_000).slice(0, 10)}T00:00`;
+  return twoWeeks < monthStart ? twoWeeks : monthStart;
+}
+
 async function viewRecords() {
   const q = new URLSearchParams(location.hash.split('?')[1] || '');
   const nowStr = toLocalInput(Date.now());
-  let from = q.get('from') || `${thisYm()}-01T00:00`;
+  let from = q.get('from') || recordsFrom();
   let to = q.get('to') || nowStr;
   if (to > nowStr) to = nowStr;
   if (from > to) from = to;
@@ -581,6 +1037,7 @@ async function viewRecords() {
   if (!data) return;
 
   const isAdmin = Boolean(state.me.admin);
+  const decisions = await loadDecisions(from.slice(0, 10), to.slice(0, 10), worker || null);
   const dropLabel = (r) => isAdmin
     ? `${r.workerId} - ${r.workerName || r.workerId}`
     : (r.workerName || r.workerId);
@@ -598,9 +1055,12 @@ async function viewRecords() {
   for (const r of data.rings) {
     if (worker && r.workerId !== worker) continue;
     for (const e of r.entries) {
+      const day = fmtDay(e.periodStartMs, r.timezone);
+      const d = r.workerId ? decisions.get(decisionKey(r.workerId, day)) : null;
       flat.push({
-        ring: r.ringId, worker: cellLabel(r), day: fmtDay(e.periodStartMs, r.timezone), recorded: fmtTime(e.recordedAtMs, r.timezone),
+        ring: r.ringId, worker: cellLabel(r), workerId: r.workerId, day, recorded: fmtTime(e.recordedAtMs, r.timezone),
         band: e.band, verified: e.verified, entryKey: e.entryKey, commitment: e.scoreCommitmentHex, txId: e.txId || '',
+        decisionRow: d || null, decision: d ? d.decision : '', decisionReason: d ? d.reason : '',
       });
     }
   }
@@ -629,7 +1089,13 @@ async function viewRecords() {
 
   const rows = flat.map((f) => h('tr', {},
     h('td', {}, f.day), h('td', {}, f.recorded), h('td', {}, f.ring), h('td', {}, f.worker),
-    h('td', {}, bandChip(f.band)), h('td', {}, verifiedCell(f)),
+    h('td', {}, bandChip(f.band)),
+    h('td', {}, f.workerId && (f.decisionRow || needsDecision(f.band))
+      ? decisionChip(f.decisionRow, isAdmin ? () => openDecisionDialog({
+          workerId: f.workerId, who: f.worker, date: f.day, band: f.band, current: f.decisionRow,
+        }) : null)
+      : '—'),
+    h('td', {}, verifiedCell(f)),
     ellipCell(f.entryKey), ellipCell(f.txId, { href: txExplorerUrl(f.txId) })));
 
   mount(
@@ -643,14 +1109,14 @@ async function viewRecords() {
       ? h('div', { class: 'table-wrap' }, h('table', {},
           h('thead', {}, h('tr', {},
             h('th', {}, t('day')), h('th', {}, t('recorded')), h('th', {}, t('ring')), h('th', {}, t('worker')),
-            h('th', {}, t('band')), h('th', {}, t('verified')), h('th', {}, t('entrykey')), h('th', {}, t('tx')))),
+            h('th', {}, t('band')), h('th', {}, t('dec_h')), h('th', {}, t('verified')), h('th', {}, t('entrykey')), h('th', {}, t('tx')))),
           h('tbody', {}, rows)))
       : h('p', { class: 'muted' }, t('no_entries')),
   );
 }
 
 function downloadCsv(rows) {
-  const head = ['day', 'recorded', 'ring', 'worker', 'band', 'verified', 'entryKey', 'commitment', 'txId'];
+  const head = ['day', 'recorded', 'ring', 'worker', 'band', 'decision', 'decisionReason', 'verified', 'entryKey', 'commitment', 'txId'];
   const esc = (v) => `"${String(v).replace(/"/g, '""')}"`;
   const csv = [head.join(','), ...rows.map((r) => head.map((k) => esc(r[k])).join(','))].join('\n');
   const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
@@ -701,80 +1167,191 @@ function addForm(fields, submit) {
   }, h('div', { class: 'submit-row' }, ...kids, h('button', { class: 'btn', type: 'submit' }, t('add'))));
 }
 
+async function issueInvite(workerId) {
+  try {
+    const r = await api(`/api/workers/${encodeURIComponent(workerId)}/invite`, { method: 'POST', body: {} });
+    const dlg = h('dialog', { class: 'decision-dialog' },
+      h('h2', {}, t('invite_done')),
+      h('p', {}, h('code', { class: 'invite-code' }, r.code)),
+      h('p', { class: 'muted small' }, `${workerId} · ${r.expiresAt.slice(0, 10)}`),
+      h('div', { class: 'dialog-actions' },
+        h('button', { class: 'btn secondary', type: 'button', onclick: async () => {
+          try { await navigator.clipboard.writeText(r.code); toast(t('copied'), 'ok'); } catch { }
+        } }, t('copy')),
+        h('button', { class: 'btn', type: 'button', onclick: () => { dlg.close(); dlg.remove(); route(); } }, 'OK')));
+    document.body.append(dlg);
+    dlg.showModal();
+  } catch (e) {
+    if (String(e.message) === 'unauthorized') return;
+    toast((e.body && e.body.error) || t('req_fail'), 'err');
+  }
+}
+
 function workersSection(r) {
+  const sandbox = Boolean(state.me && state.me.guest);
   const rows = r.workers.map((w) => {
     return h('tr', {},
       h('td', {}, w.name), h('td', { class: 'mono small' }, w.id),
       h('td', {}, w.assignedRing || '—'),
-      h('td', { class: 'feed-actions' }, delBtn(`/api/workers/${w.id}`)));
+      h('td', {}, w.walletBound ? t('wallet_bound') : t('wallet_none')),
+      h('td', { class: 'feed-actions' }, sandbox ? null : [
+        h('button', { class: 'btn secondary sm', type: 'button', onclick: () => issueInvite(w.id) }, t('invite_btn')),
+        w.walletBound && h('button', { class: 'btn secondary sm', type: 'button',
+          onclick: () => { if (confirm(t('revoke_confirm'))) adminMut('DELETE', `/api/workers/${w.id}/wallet`, undefined, 'updated'); } }, t('revoke')),
+        delBtn(`/api/workers/${w.id}`),
+      ]));
   });
-  const form = addForm([
+  const form = sandbox ? null : addForm([
     { name: 'name', label: t('name'), required: true },
     { name: 'id', label: 'id', ph: 'auto' },
   ], (i) => adminMut('POST', '/api/workers', { id: i.id.value || undefined, name: i.name.value }, 'added'));
-  return crudSection('d_workers', [t('name'), 'ID', t('ring'), ''], rows, form);
+  return crudSection('d_workers', [t('name'), 'ID', t('ring'), t('wallet_col'), ''], rows, form);
 }
 
 function ringsSection(r) {
+  const sandbox = Boolean(state.me && state.me.guest);
   const rows = r.rings.map((ring) => {
-    const wsel = h('select', {}, [opt('', t('unset')), ...r.workers.map((w) => opt(w.id, `${w.id} - ${w.name}`))]);
+    const wsel = h('select', { disabled: sandbox }, [opt('', t('unset')), ...r.workers.map((w) => opt(w.id, `${w.id} - ${w.name}`))]);
     wsel.value = ring.workerId || '';
     wsel.addEventListener('change', () => adminMut('PATCH', `/api/rings/${ring.id}`, { workerId: wsel.value || null }, 'updated'));
     return h('tr', {},
       h('td', {}, ring.label),
       h('td', {}, wsel), h('td', {}, ring.status), h('td', {}, String(ring.submissionCount)),
-      h('td', { class: 'feed-actions' }, delBtn(`/api/rings/${ring.id}`)));
+      h('td', { class: 'feed-actions' }, sandbox ? null : delBtn(`/api/rings/${ring.id}`)));
   });
-  const form = addForm([
+  const form = sandbox ? null : addForm([
     { name: 'label', label: t('name'), required: true },
     { name: 'id', label: 'id', ph: 'auto' },
   ], (i) => adminMut('POST', '/api/rings', { id: i.id.value || undefined, label: i.label.value }, 'added'));
   return crudSection('d_rings', [t('name'), t('worker'), 'status', t('d_records'), ''], rows, form);
 }
 
-function submitOneForm(rings) {
-  if (!state.cfg.submitEnabled || !rings.length) return null;
-  const ring = h('select', { name: 'ring' }, rings.map((r) => opt(r.id, `${r.label || r.id}${r.workerName ? ` · ${r.workerName}` : ''}`)));
-  const value = h('input', { name: 'value', type: 'number', min: '0', max: '100', step: '0.1', required: true });
-  const recorded = h('input', { name: 'recorded', type: 'datetime-local', value: toLocalInput(Date.now()), required: true });
-  const tamper = h('input', { name: 'tamper', type: 'checkbox' });
-  const doIt = async (form) => {
-    const btn = form.querySelector('button[type=submit]');
-    const fields = [ring, value, recorded, tamper];
-    btn.disabled = true;
-    btn.textContent = t('submit_pending');
-    form.classList.add('is-pending');
-    fields.forEach((f) => { f.disabled = true; });
-    try {
-      const r = await api('/api/submit', { method: 'POST', body: { ringId: ring.value, value: Number(value.value), recordedAt: new Date(recorded.value).toISOString(), tamper: tamper.checked } });
-      if (r.recovered) toast(`${t('submit_ok_recovered')}: ${bandOf(r.band)}`, 'warn');
-      else if (r.tampered) toast(`${t('submit_ok_tampered')}: ${bandOf(r.storedBand)} ⇄ ${bandOf(r.band)}`, 'warn');
-      else toast(`${t('submit_ok')}: ${bandOf(r.band)}`, 'ok');
-      route();
-    } catch (e) {
-      if (String(e.message) === 'unauthorized') return;
-      const err = e.body && e.body.error;
-      toast(err && /already-submitted/.test(err) ? t('submit_dup') : err || t('submit_fail'), 'err');
-      btn.disabled = false;
-      btn.textContent = t('submit_btn');
-      form.classList.remove('is-pending');
-      fields.forEach((f) => { f.disabled = false; });
-    }
-  };
-  return h('form', { class: 'submit-form', onsubmit: (ev) => { ev.preventDefault(); doIt(ev.currentTarget); } },
-    h('h3', {}, t('submit_h')),
-    h('p', { class: 'muted' }, t('submit_p')),
-    h('div', { class: 'submit-row' },
-      h('label', {}, t('ring'), ring), h('label', {}, t('submit_value'), value),
-      h('label', {}, t('submit_recorded'), recorded), h('button', { class: 'btn', type: 'submit' }, t('submit_btn'))),
-    h('label', { class: 'submit-tamper' }, tamper, h('span', {}, t('submit_tamper'), ' ', h('span', { class: 'muted' }, t('submit_tamper_hint')))));
+function statusChip(row) {
+  const detail = row.status === 'skipped' && row.skipReason
+    ? t(`skip_${row.skipReason}`)
+    : row.status === 'failed' ? row.lastError : null;
+  return h('span', { class: `chip st-${row.status}`, title: detail || '' },
+    t(`st_${row.status}`), detail ? ` · ${detail}` : '');
+}
+
+async function busyButton(btn, busyKey, idleKey, work) {
+  btn.disabled = true;
+  btn.textContent = t(busyKey);
+  try {
+    await work();
+    route();
+  } catch (e) {
+    if (String(e.message) === 'unauthorized') return;
+    toast((e.body && e.body.error) || t('req_fail'), 'err');
+    btn.disabled = false;
+    btn.textContent = t(idleKey);
+  }
+}
+
+function jobStatus(job) {
+  if (!job) return null;
+  const at = Date.parse(job.finishedAt || job.startedAt);
+  const when = Number.isFinite(at) ? `${fmtDay(at)} ${fmtTime(at)}` : '';
+  const detail = job.status === 'running' ? job.stage : job.error;
+  return h('p', { class: `job-status job-${job.status}` },
+    h('strong', {}, t(`job_${job.status}`)), ` · ${job.readings} ${t('job_readings')} · ${when}`,
+    detail ? h('span', { class: 'muted small' }, ` — ${detail}`) : null);
+}
+
+function scheduleQueueRefresh(active) {
+  clearTimeout(state.queueTimer);
+  if (!active) return;
+  const here = location.hash;
+  state.queueTimer = setTimeout(() => { if (location.hash === here) route(); }, 15_000);
+}
+
+function queueSection(rows, job) {
+  const queuedMode = Boolean(state.cfg.submitQueued);
+  const waiting = rows.filter((r) => (queuedMode ? ['pending', 'failed'] : ['pending', 'queued', 'failed']).includes(r.status));
+  const active = queuedMode && ((job && job.status === 'running') || rows.some((r) => r.status === 'queued'));
+  scheduleQueueRefresh(active);
+  const pull = state.cfg.partnerPullEnabled
+    ? h('button', { class: 'btn', type: 'button', onclick: (ev) => busyButton(ev.currentTarget, 'q_pulling', 'q_pull', async () => {
+        const r = await api('/api/partner/pull', { method: 'POST', body: {} });
+        const parts = [[r.inserted, 'q_new'], [r.duplicates, 'q_dup'], [r.conflicts, 'q_conflict'],
+          [r.badSignature, 'q_badsig'], [r.invalid, 'q_invalid'], [r.unknownRing, 'q_unknown_ring']]
+          .filter(([n]) => n).map(([n, k]) => `${t(k)} ${n}`);
+        const bad = r.conflicts || r.badSignature || r.invalid || r.unknownRing;
+        toast(`${t('q_pulled')} ${r.fetched}${parts.length ? ` — ${parts.join(' / ')}` : ''}`, bad ? 'warn' : 'ok');
+      }) }, t('q_pull'))
+    : null;
+  const tamper = h('input', { type: 'checkbox' });
+  const submit = state.cfg.submitEnabled && waiting.length
+    ? h('button', { class: 'btn', type: 'button', onclick: (ev) => busyButton(ev.currentTarget, 'q_submitting', 'q_submit', async () => {
+        const r = await api('/api/staged/submit', { method: 'POST', body: { tamper: tamper.checked } });
+        if (r.queued !== undefined) {
+          toast(`${t('q_queued')}: ${r.queued} — ${t('q_queued_hint')}`, 'ok');
+          return;
+        }
+        const summary = `${t('q_result')}: ${t('q_ok')} ${r.submitted} / ${t('q_skip')} ${r.skipped} / ${t('q_fail')} ${r.failed}`;
+        if (r.tampered) toast(`${summary} — ${t('q_tampered')}`, 'warn');
+        else toast(summary, r.failed ? 'err' : r.skipped ? 'warn' : 'ok');
+      }) }, `${t('q_submit')} (${waiting.length})`)
+    : null;
+  const tamperOption = submit
+    ? h('label', { class: 'submit-tamper' }, tamper,
+        h('span', {}, t('submit_tamper'), ' ', h('span', { class: 'muted' }, t('submit_tamper_hint'))))
+    : null;
+  const body = rows.map((r) => {
+    const ms = Date.parse(r.recordedAt);
+    return h('tr', {},
+      h('td', { class: 'mono small' }, Number.isFinite(ms) ? `${fmtDay(ms)} ${fmtTime(ms)}` : r.recordedAt),
+      h('td', {}, r.ringLabel || r.ringId),
+      h('td', {}, r.workerName || '—'),
+      h('td', {}, bandChip(r.band)),
+      h('td', {}, t(`src_${r.source}`)),
+      h('td', {}, statusChip(r)),
+      h('td', { class: 'feed-actions' }, ['pending', 'failed'].includes(r.status) ? delBtn(`/api/staged/${r.id}`) : null));
+  });
+  return h('section', { class: 'crud-section' },
+    h('h2', {}, t('q_h')),
+    h('p', { class: 'muted' }, t('q_p')),
+    pull || submit ? h('div', { class: 'queue-actions' }, pull, submit) : null,
+    tamperOption,
+    jobStatus(job),
+    active ? h('p', { class: 'muted small' }, t('job_refresh')) : null,
+    rows.length
+      ? h('div', { class: 'table-wrap' }, h('table', { class: 'feed-table' },
+          h('thead', {}, h('tr', {}, ...[t('recorded'), t('ring'), t('worker'), t('band'), t('q_source'), t('q_status'), ''].map((hd) => h('th', {}, hd)))),
+          h('tbody', {}, body)))
+      : h('p', { class: 'muted' }, t('q_none')));
+}
+
+function showcaseSection(status) {
+  if (!status) return null;
+  const r = status.readings || {};
+  const seed = state.cfg.submitEnabled
+    ? h('button', { class: 'btn', type: 'button', onclick: (ev) => {
+        if (!confirm(t('sc_confirm')(status.planned, status.next.from, status.next.to))) return;
+        busyButton(ev.currentTarget, 'sc_seeding', 'sc_seed', async () => {
+          const res = await api('/api/showcase', { method: 'POST', body: {} });
+          toast(t('sc_done')(res.readings, res.decisions, res.queued), 'ok');
+        });
+      } }, t('sc_seed'))
+    : null;
+  return h('section', { class: 'crud-section' },
+    h('h2', {}, t('sc_h')),
+    h('p', { class: 'muted' }, t('sc_p')),
+    h('p', { class: 'small' }, t('sc_status')(status.submitted, r.queued || 0, (r.pending || 0) + (r.failed || 0))),
+    seed && h('div', { class: 'queue-actions' }, seed));
 }
 
 async function viewDataAdmin() {
   mount(h('div', { class: 'loading' }, '…'));
   let roster;
+  let staged;
+  let showcase = null;
   try {
-    roster = await api('/api/roster');
+    [roster, staged, showcase] = await Promise.all([
+      api('/api/roster'),
+      api('/api/staged'),
+      state.me.guest ? null : api('/api/showcase').catch(() => null),
+    ]);
   } catch (e) {
     if (String(e.message) === 'unauthorized') return;
     mount(banner(t('err_generic')));
@@ -785,7 +1362,8 @@ async function viewDataAdmin() {
     h('p', { class: 'muted' }, t('data_p')),
     workersSection(roster),
     ringsSection(roster),
-    submitOneForm(roster.rings),
+    queueSection(staged.rows, staged.job),
+    showcaseSection(showcase),
   );
 }
 
@@ -802,6 +1380,7 @@ function renderChrome() {
   logout.textContent = t('logout');
   logout.hidden = !state.token;
   document.getElementById('net-label').textContent = state.cfg.network || '';
+  guestBar();
 
   const nav = document.getElementById('nav');
   if (state.me) {
@@ -812,20 +1391,56 @@ function renderChrome() {
     links.push(link('#/overview', t('nav_overview'), here.startsWith('#/overview') || here.startsWith('#/worker')));
     if (canRecords()) links.push(link('#/records', t('nav_records'), here === '#/records'));
     if (canAdmin()) links.push(link('#/data', t('nav_data'), here === '#/data'));
+    if (state.cfg.publicVerifyEnabled) links.push(link('#/verify', t('nav_verify'), here === '#/verify'));
     nav.replaceChildren(...links);
+  } else if (state.cfg.publicVerifyEnabled) {
+    nav.hidden = false;
+    nav.replaceChildren(h('a', { href: '#/verify', class: location.hash.startsWith('#/verify') ? 'active' : '' }, t('nav_verify')));
   } else {
     nav.hidden = true;
   }
 }
 
+const LS_GUIDE = 'ohayo.guide.open';
+let guideTicket = 0;
+
+async function guidePanel() {
+  const ticket = ++guideTicket;
+  if (!state.me) { document.getElementById('guide-panel')?.remove(); return; }
+  let steps;
+  try { steps = (await api('/api/guide')).steps; } catch { return; }
+  if (ticket !== guideTicket) return;
+  const existing = document.getElementById('guide-panel');
+  const stored = localStorage.getItem(LS_GUIDE);
+  const open = stored === null ? Boolean(state.me.guest) : stored === '1';
+  const done = steps.filter((s) => s.done).length;
+  const items = steps.map((s, i) => {
+    const [todo, proves] = t(`guide_${s.key}`);
+    return h('li', { class: s.done ? 'done' : '' },
+      h('span', { class: 'guide-mark' }, s.done ? '✓' : String(i + 1)),
+      h('div', {},
+        h('div', {}, h('strong', {}, `${t('guide_do')}: `), todo,
+          s.key === 'public_verify' ? h('span', {}, ' ', h('a', { href: '#/verify' }, t('nav_verify'))) : null),
+        h('div', { class: 'muted small' }, `${t('guide_proves')}: ${proves}`)));
+  });
+  const panel = h('details', { id: 'guide-panel', class: 'guide-panel', ...(open ? { open: '' } : {}) },
+    h('summary', {}, `${t('guide_h')} — ${done} / ${steps.length}`),
+    h('ol', {}, items));
+  panel.addEventListener('toggle', () => localStorage.setItem(LS_GUIDE, panel.open ? '1' : '0'));
+  if (existing) existing.replaceWith(panel);
+  else document.getElementById('view').before(panel);
+}
+
 async function route() {
   renderChrome();
   const path = location.hash.split('?')[0] || '#/';
-  if (!state.token) { viewLogin(); return; }
+  if (path === '#/verify') { guidePanel(); return viewVerify(); }
+  if (!state.token) { guidePanel(); viewLogin(); return; }
   if (!state.me) {
     try { state.me = await api('/api/me'); } catch { viewLogin(); return; }
     renderChrome();
   }
+  guidePanel();
   if (path === '#/data') { if (!canAdmin()) { location.hash = home(); return; } return viewDataAdmin(); }
   if (path === '#/records') {
     if (!canRecords()) { location.hash = home(); return; }

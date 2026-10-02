@@ -1,40 +1,31 @@
 import type { ConditionReader } from '@midnight-demo/condition-read';
 import type { SqlDatabase } from '@midnight-demo/db';
+import type { PartnerConfig } from '@midnight-demo/ingester/partner';
+import type { ConditionChain } from '@midnight-demo/ingester-core';
+
+import type { AuthConfig } from './auth.js';
 import { hexToBytes } from '@midnight-demo/shared';
 
 export type ReconcileFn = (entryKeys: readonly string[]) => Promise<{
   confirmed: number;
-  localChecked: number;
   mismatches: number;
   valueMismatches: number;
   missing: number;
 }>;
 
-export type SubmitFn = (input: {
-  ringId: string;
-  value: number;
-  recordedAt: string;
+export interface SubmitStagedOptions {
   tamper?: boolean;
-}) => Promise<
-  | {
-      ok: true;
-      entryKey: string;
-      ringId: string;
-      periodStartMs: number;
-      band: string;
-      storedBand: string;
-      tampered: boolean;
-      txId: string;
-      blockHeight: string;
+  ringIds?: readonly string[];
+  limit?: number;
+  submittedBy?: string;
+}
 
-      recovered?: boolean;
-    }
-  | { ok: false; reason: string }
->;
-
-export type SubmitStagedFn = () => Promise<{
+export type SubmitStagedFn = (options: SubmitStagedOptions) => Promise<{
+  queued?: number;
   submitted: number;
   skipped: number;
+  failed: number;
+  tampered: number;
   reconcile: { confirmed: number; mismatches: number; valueMismatches: number; missing: number } | null;
 }>;
 
@@ -42,10 +33,21 @@ export interface GatewayDeps {
   db: SqlDatabase;
   reader: ConditionReader;
   salt: Uint8Array;
-  config?: { network?: string; explorerUrl?: string };
+  config?: {
+    network?: string;
+    explorerUrl?: string;
+    partnerUrl?: string;
+    submitQueued?: boolean;
+    contractAddress?: string;
+  };
+  chain?: Pick<ConditionChain, 'readEntries'>;
+  openCommitment?: (scoreCenti: number, nonceHex: string) => Promise<string>;
+  openingKeyHex?: string;
   reconcile?: ReconcileFn;
-  submit?: SubmitFn;
   submitStaged?: SubmitStagedFn;
+  partner?: PartnerConfig;
+  fetch?: typeof fetch;
+  auth?: AuthConfig;
 }
 
 export function saltFromHex(hex: string | undefined): Uint8Array {

@@ -11,6 +11,7 @@
     "submit": "node ../../../scripts/require-development-host.mjs && tsx src/cli.ts submit",
     "reconcile": "node ../../../scripts/require-development-host.mjs && tsx src/cli.ts reconcile",
     "status": "node ../../../scripts/require-development-host.mjs && tsx src/cli.ts status",
+    "verify-receipt": "node ../../../scripts/require-development-host.mjs && tsx src/cli.ts verify-receipt",
     "fund": "node ../../../scripts/require-development-host.mjs && tsx src/cli.ts fund",
     "wallet": "node ../../../scripts/require-development-host.mjs && tsx src/cli.ts wallet",
     "funding": "node ../../../scripts/require-development-host.mjs && tsx src/cli.ts funding",

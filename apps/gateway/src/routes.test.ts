@@ -15,7 +15,7 @@ import {
 } from '@midnight-demo/db';
 import { conditionEntryKey } from '@midnight-demo/shared';
 
-import { handleApi, handleRead } from './routes.js';
+import { handleApi, handleRead } from './test-support.js';
 
 const SALT = new Uint8Array(16).fill(0x5a);
 const AUG16_JST = Date.parse('2026-08-16T00:00:00+09:00');
@@ -186,6 +186,15 @@ test('handleApi: /api/config is unauthenticated display strings', async () => {
     network: 'Midnight Local',
     explorerUrl: 'https://explorer.example',
     submitEnabled: false,
+    submitQueued: false,
+    partnerPullEnabled: false,
+    partnerUrl: null,
+    contractAddress: null,
+    publicVerifyEnabled: false,
+    receiptsEnabled: false,
+    loginEnabled: true,
+    guestEntry: false,
+    walletNetworkId: 'preprod',
   });
 });
 
@@ -199,12 +208,17 @@ test('handleApi: /api/me resolves the role from the token', async () => {
   assert.equal(adm.role, 'admin');
   assert.equal(adm.admin, true);
   assert.equal(adm.workerId, null);
+  assert.equal(adm.ringId, null);
 
   const wkr = await bodyOf(await handleApi(get('/api/me', 'worker-1'), deps));
   assert.equal(wkr.role, 'worker');
   assert.equal(wkr.workerId, 'worker-1');
   assert.equal(wkr.workerName, '作業員 一郎');
   assert.equal(wkr.admin, false);
+  assert.equal(wkr.ringId, 'ring-1');
+
+  await db.execute("UPDATE ring_worker_map SET to_ts = '2026-09-01T00:00:00Z' WHERE worker_id = 'worker-1'");
+  assert.equal((await bodyOf(await handleApi(get('/api/me', 'worker-1'), deps))).ringId, null);
 });
 
 test('handleApi: unknown /api route is 404, non-/api is null', async () => {
@@ -224,7 +238,7 @@ test('handleApi: POST /api/reconcile — auth, scope, 501/200', async () => {
     salt: SALT,
     reconcile: async (keys: readonly string[]) => {
       seen = keys;
-      return { confirmed: keys.length, localChecked: 0, mismatches: 0, valueMismatches: 0, missing: 0 };
+      return { confirmed: keys.length, mismatches: 0, valueMismatches: 0, missing: 0 };
     },
   };
 

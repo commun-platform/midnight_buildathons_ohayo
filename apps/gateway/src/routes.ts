@@ -9,6 +9,10 @@ import type { SqlDatabase } from '@midnight-demo/db';
 
 import { handleAdmin } from './admin.js';
 import { authenticate } from './auth.js';
+import { handleDecisions } from './decisions.js';
+import { handleGuide, recordMismatch } from './guide.js';
+import { handleAuth } from './login.js';
+import { handlePublic } from './public.js';
 import type { GatewayDeps } from './deps.js';
 
 export type { GatewayDeps } from './deps.js';
@@ -87,7 +91,7 @@ export async function handleRead(request: Request, deps: GatewayDeps): Promise<R
   if (!url.pathname.startsWith('/api/conditions/')) return null;
   if (request.method !== 'GET') return json(405, { error: 'Method not allowed' });
 
-  const viewer = await authenticate(deps.db, request);
+  const viewer = await authenticate(deps, request);
   if (!viewer) return json(401, { error: 'Unauthorized' });
 
   const [, , kind, id] = url.pathname.split('/').filter(Boolean);
@@ -125,12 +129,21 @@ function handleConfig(deps: GatewayDeps): Response {
   return json(200, {
     network: deps.config?.network ?? null,
     explorerUrl: deps.config?.explorerUrl ?? null,
-    submitEnabled: Boolean(deps.submit),
+    submitEnabled: Boolean(deps.submitStaged),
+    submitQueued: Boolean(deps.submitStaged && deps.config?.submitQueued),
+    partnerPullEnabled: Boolean(deps.partner),
+    partnerUrl: deps.config?.partnerUrl ?? null,
+    contractAddress: deps.config?.contractAddress ?? null,
+    publicVerifyEnabled: Boolean(deps.chain),
+    receiptsEnabled: Boolean(deps.openingKeyHex),
+    loginEnabled: Boolean(deps.auth),
+    guestEntry: Boolean(deps.auth?.guestEntry),
+    walletNetworkId: deps.auth?.walletNetworkId ?? null,
   });
 }
 
 async function handleMe(request: Request, deps: GatewayDeps): Promise<Response> {
-  const viewer = await authenticate(deps.db, request);
+  const viewer = await authenticate(deps, request);
   if (!viewer) return json(401, { error: 'Unauthorized' });
 
   const worker = viewer.workerId
@@ -138,17 +151,25 @@ async function handleMe(request: Request, deps: GatewayDeps): Promise<Response> 
         viewer.workerId,
       ])
     : null;
+  const ring = viewer.workerId
+    ? await deps.db.first<{ ring_id: string }>(
+        'SELECT ring_id FROM ring_worker_map WHERE worker_id = ? AND to_ts IS NULL ORDER BY from_ts DESC LIMIT 1',
+        [viewer.workerId],
+      )
+    : null;
 
   return json(200, {
     role: viewer.role,
     admin: viewer.role === 'admin',
     workerId: viewer.workerId ?? null,
     workerName: worker?.name ?? null,
+    ringId: ring?.ring_id ?? null,
+    guest: Boolean(viewer.guestId),
   });
 }
 
 async function handleReconcile(request: Request, deps: GatewayDeps): Promise<Response> {
-  const viewer = await authenticate(deps.db, request);
+  const viewer = await authenticate(deps, request);
   if (!viewer) return json(401, { error: 'Unauthorized' });
 
   let body: { entryKeys?: unknown };
@@ -181,15 +202,26 @@ async function handleReconcile(request: Request, deps: GatewayDeps): Promise<Res
       error: 'Reconciliation runs on the operator host — run `npm run condition:reconcile`.',
     });
   }
-  return json(200, await deps.reconcile(allowed));
+  const result = await deps.reconcile(allowed);
+  if (result.mismatches > 0 || result.valueMismatches > 0) await recordMismatch(deps.db, viewer, allowed);
+  return json(200, result);
 }
 
 export async function handleApi(request: Request, deps: GatewayDeps): Promise<Response | null> {
   const url = new URL(request.url);
   if (!url.pathname.startsWith('/api/')) return null;
 
+  const login = await handleAuth(request, deps);
+  if (login) return login;
+
+  const pub = await handlePublic(request, deps);
+  if (pub) return pub;
+
   const admin = await handleAdmin(request, deps);
   if (admin) return admin;
+
+  if (url.pathname === '/api/decisions') return handleDecisions(request, deps);
+  if (url.pathname === '/api/guide') return handleGuide(request, deps);
 
   if (request.method === 'POST' && url.pathname === '/api/reconcile') {
     return handleReconcile(request, deps);

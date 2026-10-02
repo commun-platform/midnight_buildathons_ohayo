@@ -1,5 +1,5 @@
 {
-  "name": "sadako-worksite-condition",
+  "name": "ohayo-worksite-condition",
   "version": "0.1.0",
   "private": true,
   "license": "Apache-2.0",
@@ -11,7 +11,11 @@
     "packages/*"
   ],
   "overrides": {
-    "@midnight-ntwrk/onchain-runtime-v3": "3.0.0"
+    "@midnight-ntwrk/onchain-runtime-v3": "3.0.0",
+    "@effect/platform-node-shared": "4.0.0-rc.117",
+    "@effect/sql-d1": "4.0.0-rc.117",
+    "@effect/sql-sqlite-do": "4.0.0-rc.117",
+    "@effect/vitest": "4.0.0-rc.117"
   },
   "dependencies": {
     "@midnight-ntwrk/onchain-runtime-v3": "3.0.0"
@@ -31,6 +35,7 @@
     "midnight:up": "docker compose -f ops/local/midnight-compose.yml up -d",
     "midnight:down": "docker compose -f ops/local/midnight-compose.yml down",
     "ingest:plan": "npm run plan -w @midnight-demo/ingester --",
+    "ingest:pull": "npm run pull -w @midnight-demo/ingester --",
     "ingest:record": "npm run record -w @midnight-demo/ingester -- --local",
     "ingest:submit": "npm run dev:guard && npm run submit -w @midnight-demo/condition-cli --",
     "condition:wallet": "npm run dev:guard && npm run wallet -w @midnight-demo/condition-cli --",
@@ -39,6 +44,7 @@
     "condition:submit": "npm run dev:guard && npm run submit -w @midnight-demo/condition-cli --",
     "condition:reconcile": "npm run dev:guard && npm run reconcile -w @midnight-demo/condition-cli --",
     "condition:status": "npm run dev:guard && npm run status -w @midnight-demo/condition-cli --",
+    "condition:verify-receipt": "npm run dev:guard && npm run verify-receipt -w @midnight-demo/condition-cli --",
     "condition:fund": "npm run dev:guard && npm run fund -w @midnight-demo/condition-cli --",
     "gateway:serve": "npm run serve -w @midnight-demo/gateway --"
   },

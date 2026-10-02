@@ -7,19 +7,24 @@ import { Capabilities, SerializedTransaction as SerializedTx } from '@midnight-n
 
 type WaitFor = 'Submitted' | 'InBlock' | 'Finalized';
 
+const RPC_REQUEST_TIMEOUT_MS = 5 * 60_000;
+
 export async function createSubmissionService(
   relayUrl: string,
 ): Promise<Capabilities.SubmissionService<ledger.FinalizedTransaction>> {
-  const api = await ApiPromise.create({
-    provider: new WsProvider(relayUrl, 2_500),
-    throwOnConnect: false,
-    noInitWarn: true,
-  });
+  let connection: Promise<ApiPromise> | null = null;
+  const connect = (): Promise<ApiPromise> =>
+    (connection ??= ApiPromise.create({
+      provider: new WsProvider(relayUrl, 2_500, {}, RPC_REQUEST_TIMEOUT_MS),
+      throwOnConnect: false,
+      noInitWarn: true,
+    }));
 
-  const submitTransaction = (
+  const submitTransaction = async (
     tx: { serialize(): Uint8Array },
     waitForStatus: WaitFor = 'InBlock',
   ): Promise<SubmissionEvent.SubmissionEvent> => {
+    const api = await connect();
     const raw = tx.serialize();
     const serialized = SerializedTx.from(tx);
     const hex = u8aToHex(raw);
@@ -103,6 +108,8 @@ export async function createSubmissionService(
 
   return {
     submitTransaction,
-    close: () => api.disconnect(),
+    close: async () => {
+      if (connection) await (await connection).disconnect();
+    },
   } as unknown as Capabilities.SubmissionService<ledger.FinalizedTransaction>;
 }

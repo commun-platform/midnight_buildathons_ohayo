@@ -9,6 +9,8 @@ import {
   resolveNetwork,
   walletSyncDirectory,
 } from '@midnight-demo/midnight-chain';
+import { bytesToHex, hexToBytes } from '@midnight-demo/shared';
+import { conditionScoreCommitment } from '@midnight-demo/shared/commitment';
 
 import { openCheckpoint, readWalletFiles, sealCheckpoint, writeWalletFiles } from './checkpoint.js';
 import { handleRunner, type RunnerDeps } from './handler.js';
@@ -84,6 +86,7 @@ function makeDeps(): RunnerDeps {
   return {
     chain: conditionChain(network, address),
     jobs,
+    commit: (scoreCenti, nonceHex) => bytesToHex(conditionScoreCommitment(scoreCenti, hexToBytes(nonceHex))),
     async beforeJob() {
       jobs.setStage('restoring the wallet checkpoint');
       const restored = await checkpoint.restore().catch((error: unknown) => {

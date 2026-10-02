@@ -19,6 +19,7 @@ const WORKER_ENTRIES = [
   'apps/ingester/src/submit.ts',
   'apps/ingester/src/reconcile.ts',
   'apps/ingester/src/queue.ts',
+  'apps/ingester/src/showcase.ts',
   'packages/condition-read/src/index.ts',
   'packages/db/src/d1.ts',
   'packages/db/src/migrate.ts',

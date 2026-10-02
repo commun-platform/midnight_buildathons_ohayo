@@ -5,6 +5,7 @@ import path from 'node:path';
 import test from 'node:test';
 
 import { loadSampleFeed, loadSampleRoster, runSqlScript, type SqlDatabase } from '@midnight-demo/db';
+import { openOpening } from '@midnight-demo/shared';
 
 import { openIngesterDb } from './db.js';
 import { reconcileSubmissions } from './reconcile.js';
@@ -63,7 +64,7 @@ test('the queue submit records the chain result and confirms it against the chai
   assert.deepEqual(await statuses(db), [['submitted', null], ['skipped', 'already_submitted']]);
 });
 
-test('a tampered submit keeps the worker value locally and is caught on the second verify', async () => {
+test('a tampered submit keeps the worker value locally and is caught by one verify', async () => {
   const db = await rosterDb();
   const chain = fakeChain();
   await queue(db, 'ring-1', 72);
@@ -80,9 +81,7 @@ test('a tampered submit keeps the worker value locally and is caught on the seco
     [{ value: 72 }],
   );
 
-  const first = await reconcileSubmissions(db, chain, { entryKeys: [entryKey], phased: true });
-  assert.deepEqual([first.localChecked, first.confirmed, first.mismatches.length], [1, 0, 0]);
-  const caught = await reconcileSubmissions(db, chain, { entryKeys: [entryKey], phased: true });
+  const caught = await reconcileSubmissions(db, chain, { entryKeys: [entryKey] });
   assert.equal(caught.mismatches.length, 1);
   assert.equal(caught.valueMismatches.length, 1);
   assert.equal(caught.confirmed, 0);
@@ -178,4 +177,25 @@ test('reconcile reports an entry the chain does not have as missing', async () =
   const result = await reconcileSubmissions(db, chain);
   assert.deepEqual(result.missing, [entryKey]);
   assert.equal(result.confirmed, 0);
+});
+
+test('with an opening key the opening is stored sealed, but not for a tampered row', async () => {
+  const key = 'ab'.repeat(32);
+  const db = await rosterDb();
+  const chain = fakeChain();
+  await queue(db, 'ring-1', 72);
+  await submitStagedFeed(db, chain, salt, { openingKeyHex: key });
+  const row = await db.first<{ entry_key: string; opening_ciphertext: string }>(
+    'SELECT entry_key, opening_ciphertext FROM submissions',
+  );
+  assert.ok(row && row.opening_ciphertext.startsWith('v1.'));
+  const opening = await openOpening(key, row.entry_key, row.opening_ciphertext);
+  assert.equal(opening.scoreCenti, 7200);
+
+  await queue(db, 'ring-2', 72);
+  await submitStagedFeed(db, chain, salt, { openingKeyHex: key, tamper: true });
+  const tampered = await db.first<{ opening_ciphertext: string | null }>(
+    "SELECT opening_ciphertext FROM submissions WHERE ring_id = 'ring-2'",
+  );
+  assert.equal(tampered?.opening_ciphertext, null);
 });

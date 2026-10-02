@@ -44,6 +44,7 @@
     "condition:submit": "npm run dev:guard && npm run submit -w @midnight-demo/condition-cli --",
     "condition:reconcile": "npm run dev:guard && npm run reconcile -w @midnight-demo/condition-cli --",
     "condition:status": "npm run dev:guard && npm run status -w @midnight-demo/condition-cli --",
+    "condition:verify-receipt": "npm run dev:guard && npm run verify-receipt -w @midnight-demo/condition-cli --",
     "condition:fund": "npm run dev:guard && npm run fund -w @midnight-demo/condition-cli --",
     "gateway:serve": "npm run serve -w @midnight-demo/gateway --"
   },

@@ -307,7 +307,8 @@ work_decisions       (id, worker_id, period_start_ms, entry_key?, band?, decisio
   "⚠ pending / ✓ verified" indicator.
 - `work_decisions` records why an admin let a worker work on a given day
   (`worked` / `light_duty` / `rested`). It is **append-only**: triggers reject
-  `UPDATE` and `DELETE`, a correction is a new row whose `supersedes_id` points at the
+  `UPDATE` and `DELETE` (a `DELETE` only goes through for a guest sandbox row,
+  `decided_by` `guest:<id>`, which the nightly reset removes), a correction is a new row whose `supersedes_id` points at the
   current one (partial unique indexes allow one root per worker-day and one successor
   per row), and every write also lands in `audit_log`. The server snapshots the day's
   `band` and `entry_key` from `submissions`; on a `caution` / `danger` day, `worked`
@@ -562,13 +563,10 @@ An admin can verify at two levels:
 1. **Band reconciliation** — the verify button. Compares `submissions.band` with
    the chain's `entries`. Tampering with the local copy shows up here.
 
-   Reconciliation is **two-phase** (`reconcileSubmissions` with `phased: true`).
-   For a row whose `reconciled_at` is still NULL, the first call stamps
-   `chain_verified_at` / `reconciled_at` from the stored record and returns
-   `localChecked` without reading the chain; only once `reconciled_at` is set does
-   the next call open an `indexerConditionReader` and query the chain directly.
-   **Detecting a mismatch therefore takes two presses** — which is why the first
-   toast reads "press again to check the chain directly".
+   One press reads the chain (`reconcileSubmissions` → `ConditionChain.readEntries`;
+   hosted, the chain runner's `/read`, which needs no synced wallet). A mismatch is
+   reported, the local row is corrected from the chain, and the verification is
+   withdrawn.
 2. **Opening the commitment** — given the salt and a `(scoreCenti, nonce)`
    disclosure, recompute `persistentCommit(scoreCenti, nonce) == scoreCommitment`
    and `entryKey == sha256(ringId || periodStartMs || salt)[0..31]`. That

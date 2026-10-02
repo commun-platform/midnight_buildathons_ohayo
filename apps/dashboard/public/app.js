@@ -19,6 +19,26 @@ const T = {
     wallet_bound: '連携済み', wallet_none: '未連携', revoke: '連携解除', revoke_confirm: 'このウォレット連携を解除しますか？',
     err_generic: '読み込みに失敗しました。',
     nav_overview: '本日', nav_records: '一覧', nav_data: 'データ管理',
+    nav_verify: '公開検証', verify_link: '公開検証',
+    guide_h: 'デモガイド', guide_do: 'やること', guide_proves: '分かること',
+    guide_measure: ['作業員として「リング同期」カードからスコアを送る（値はパートナーに直接届く）', '0〜100 の生の値を見られるのは、本人とパートナーだけ'],
+    guide_submit: ['「管理者」に切り替え、データ管理で「パートナーから取得」して「チェーンへ送信」し、記録済みになるまで待つ（止まっていたコンテナは数分で起動する）', '管理者にも値は見えない（バンドだけ）。本物の Midnight トランザクションと ZK 証明で記録される'],
+    guide_decide: ['「本日」のカードか「一覧」の行（見本の作業員の過去の日も可）で、危険・注意の作業員の就業判断を理由付きで記録する', '判断は追記のみで、誰がいつ何を理由に決めたかが残る'],
+    guide_public_verify: ['「作業員」に戻って記録の「レシート」を発行し、公開検証で確かめる', 'チェーンだけでは誰のどんな値か分からないが、本人は自分の値を証明できる'],
+    guide_tamper: ['「作業員」で日付を「昨日」にしてスコアを送り、「管理者」で取得して「ローカル記録を改ざんする」を付けて送信し、一覧で照合を押す', '運営者のデータベースの改ざんを、チェーンが見抜く'],
+    verify_h: '公開検証（ログイン不要）',
+    verify_p: 'entryKey かトランザクションのハッシュを入れると、チェーンからエントリを直接読みます。台帳には誰の値かも、値そのものも載っていません。',
+    verify_ph: 'entryKey（数字）または tx ハッシュ', verify_go: 'チェーンを読む', verify_reading: '読み込み中…（チェーン操作用コンテナが止まっていると起動に数十秒かかります）',
+    verify_source: 'チェーンから直接読んだ値', verify_day: '日付', verify_commitment: 'スコアのコミットメント', verify_tx: 'トランザクション', verify_contract: 'コントラクト',
+    verify_nol: '台帳に載っていないもの', nol_workerName: '作業員の名前', nol_ringId: 'リング ID', nol_value: '0〜100 の値',
+    receipt_h: '開示レシートの確認', receipt_p: '作業員から受け取った開示レシート（JSON）を貼ると、その値がチェーン上のコミットメントと一致するかを確かめます。',
+    receipt_check: 'レシートを確かめる', receipt_bad: 'レシートの形式が正しくありません。',
+    receipt_match: (v, d, b) => `${v} は ${d} に記録された「${b}」のエントリと一致します。`,
+    receipt_mismatch: 'このレシートはチェーン上のコミットメントと一致しません。',
+    receipt_issue: 'レシート', receipt_issued_h: '開示レシート',
+    receipt_warn: 'このレシートを渡した相手は、この日のあなたの値と、このエントリがあなたのものであることを知ります。渡すかどうかはあなたが決めます。',
+    receipt_copy: 'コピー', receipt_copied: 'コピーしました', receipt_download: 'ダウンロード', receipt_close: '閉じる', receipt_verify: '公開検証で確かめる',
+    receipt_no_opening: 'この記録には開示用の情報がありません（レシート機能より前に記録されたため）。',
     overview_h: '本日のコンディション',
     from: '開始日', to: '終了日', apply: '適用', all_workers: '全員',
     no_workers: '対象の作業員がいません。',
@@ -34,14 +54,13 @@ const T = {
     records_h: 'コンディション一覧',
     records_p: '独立検証は Node の condition:verify（今後）で。salt はブラウザに渡りません。',
     export_csv: 'CSV 書き出し', verify_btn: '照合', reverify_pending: '未照合を再照合',
-    reconciled_local: 'ローカル記録で照合済み（もう一度押すとチェーンに直接照会）',
     reconciled_chain: 'チェーン直接照会で確認',
     reconcile_error: '照合エラー: バンド／生値がコントラクトと不一致（照合を取り消し）',
     reconcile_fail: '照合に失敗しました。',
     ring: 'リング', worker: '作業員', band: 'バンド',
     unset: '—',
     submit_tamper: 'ローカル記録を改ざんする（デモ）',
-    submit_tamper_hint: '— 作業員の値はローカル記録に残し、チェーンには別バンドの値を送信します。一覧で照合を 2 回押すと不一致として検知されます。',
+    submit_tamper_hint: '— 作業員の値はローカル記録に残し、チェーンには別バンドの値を送信します。一覧で照合を押すと不一致として検知されます。',
     data_h: 'データ管理（サーバー管理者）',
     data_p: 'リング・作業員のロスターと送信キューを管理します。スコアは作業員がリング同期で送り、ここでは取得とチェーンへの送信だけを行います。',
     d_workers: '作業員', d_rings: 'リング', d_records: '記録',
@@ -50,13 +69,18 @@ const T = {
     name: '名称',
     req_fail: '処理に失敗しました。',
     q_h: '送信キュー',
+    sc_h: 'ショーケース', sc_p: '見本の作業員 4 人の過去 7 日分を、本物の preprod トランザクションとして記録します。審査員はチェーンの待ち時間なしに、判断・公開検証・照合を試せます。ゲストのデータは毎晩 03:00 に消えますが、ショーケースは残ります。',
+    sc_seed: 'ショーケースを投入', sc_seeding: '投入中…',
+    sc_status: (done, queued, waiting) => `記録済み ${done} 件 / 送信待ち ${queued} 件 / 未送信 ${waiting} 件`,
+    sc_confirm: (n, from, to) => `${from} 〜 ${to} の ${n} 件（すでにある日は除く）を preprod に記録します。コンテナが数十分動きます。続けますか？`,
+    sc_done: (readings, decisions, queued) => `ショーケース: 計測値 ${readings} 件、判断 ${decisions} 件を追加し、${queued} 件を送信キューに入れました`,
     q_p: 'パートナーから取得した値と手入力の値です。パートナーの生値はここにも表示しません（バンドのみ）。',
     q_pull: 'パートナーから取得', q_pulling: '取得中…',
     q_submit: 'チェーンへ送信', q_submitting: '送信中…（1 件ごとに証明を生成するため時間がかかります）',
     q_pulled: '取得', q_new: '新規', q_dup: '重複', q_conflict: '衝突', q_badsig: '署名不正',
     q_invalid: '範囲外', q_unknown_ring: '未登録リング',
     q_result: '送信結果', q_ok: '記録', q_skip: 'スキップ', q_fail: '失敗',
-    q_tampered: 'ローカル記録とチェーンを不一致にしました（一覧で照合を 2 回押すと検知）',
+    q_tampered: 'ローカル記録とチェーンを不一致にしました（一覧で照合を押すと検知）',
     q_none: '送信待ちの値はありません。', q_source: '出所', q_status: '状態',
     q_queued: '処理待ちにしました', q_queued_hint: 'チェーン操作用コンテナが 1 分以内に取り出して送信します（コンテナが止まっていれば起動から始まるため数分かかります）。',
     job_running: 'チェーンへ送信中', job_done: '前回の送信が完了', job_failed: '前回の送信が失敗', job_lost: '前回の送信を中断（値は処理待ちのまま再送されます）',
@@ -66,7 +90,7 @@ const T = {
     skip_already_submitted: 'この日は記録済み', skip_unknown_ring: '未登録のリング', skip_invalid_value: '不正な値',
     sync_h: 'リング同期',
     sync_p: 'リングのスコアを、パートナー（リングの会社）のサーバーへ直接送ります。OHAYO! には管理者が取得したときに届きます。リング:',
-    sync_score_in: 'スコア（0–100）',
+    sync_score_in: 'スコア（0–100）', sync_day: '日付', sync_today: '今日', sync_yesterday: '昨日',
     sync_send: 'パートナーへ送信', sync_sending: '送信中…',
     sync_ok: 'パートナーへ送信しました', sync_fail: 'パートナーへの送信に失敗しました',
     sync_score: 'パートナーが受け付けたスコア', sync_after: '管理者の取得と送信の後にチェーンへ記録されます。',
@@ -95,6 +119,26 @@ const T = {
     wallet_bound: 'linked', wallet_none: 'not linked', revoke: 'Unlink', revoke_confirm: 'Unlink this wallet?',
     err_generic: 'Failed to load.',
     nav_overview: 'Today', nav_records: 'List', nav_data: 'Data admin',
+    nav_verify: 'Public verify', verify_link: 'public verify',
+    guide_h: 'Demo guide', guide_do: 'Do', guide_proves: 'Shows',
+    guide_measure: ['As the worker, send a score from the ring sync card (it goes straight to the partner)', 'only the worker and the partner ever see the raw 0–100 value'],
+    guide_submit: ['Switch to admin, pull from the partner in Data admin, submit to the chain, and wait until the row is recorded (a stopped container takes a few minutes to start)', 'not even the admin sees the value (band only); a real Midnight transaction and ZK proof'],
+    guide_decide: ['From a card on Today or a row in the list (past showcase days work too), record a work decision with a reason for a danger or caution worker', 'decisions are append-only: who decided what, when and why stays on record'],
+    guide_public_verify: ['Back as the worker, issue a receipt for the entry and check it in public verify', 'the chain alone tells nobody who or what, yet the worker can prove their value'],
+    guide_tamper: ['As the worker, send a score dated yesterday; as admin, pull it, tick "tamper the local record", submit, then press verify in the list', "the chain catches a change to the operator's own database"],
+    verify_h: 'Public verify (no login)',
+    verify_p: 'Enter an entryKey or a transaction hash to read the entry straight from the chain. The ledger holds neither whose value it is nor the value itself.',
+    verify_ph: 'entryKey (digits) or tx hash', verify_go: 'Read the chain', verify_reading: 'Reading… (a stopped chain runner takes some seconds to start)',
+    verify_source: 'Read directly from the chain', verify_day: 'Day', verify_commitment: 'Score commitment', verify_tx: 'Transaction', verify_contract: 'Contract',
+    verify_nol: 'Not on the ledger', nol_workerName: "the worker's name", nol_ringId: 'the ring id', nol_value: 'the 0–100 value',
+    receipt_h: 'Check a disclosure receipt', receipt_p: "Paste a disclosure receipt (JSON) a worker gave you to check its value against the commitment on the chain.",
+    receipt_check: 'Check the receipt', receipt_bad: 'That is not a valid receipt.',
+    receipt_match: (v, d, b) => `${v} matches the ${b}-band entry recorded on ${d}.`,
+    receipt_mismatch: 'This receipt does not match the commitment on the chain.',
+    receipt_issue: 'receipt', receipt_issued_h: 'Disclosure receipt',
+    receipt_warn: 'Whoever you give this receipt learns your value for this day and that this entry is yours. Giving it is your choice.',
+    receipt_copy: 'Copy', receipt_copied: 'Copied', receipt_download: 'Download', receipt_close: 'Close', receipt_verify: 'Check it in public verify',
+    receipt_no_opening: 'This record has no disclosure data (it was recorded before receipts existed).',
     overview_h: "Today's condition",
     from: 'From', to: 'To', apply: 'Apply', all_workers: 'All workers',
     no_workers: 'No workers in scope.',
@@ -110,14 +154,13 @@ const T = {
     records_h: 'Condition list',
     records_p: 'Full independent verification runs in Node (condition:verify, planned). The salt is never sent to the browser.',
     export_csv: 'Export CSV', verify_btn: 'verify', reverify_pending: 'Re-verify pending',
-    reconciled_local: 'Verified from the local record (press again to check the chain directly)',
     reconciled_chain: 'Verified against the chain directly',
     reconcile_error: 'Reconcile error: band / raw value disagrees with the contract (verification withdrawn)',
     reconcile_fail: 'Reconciliation failed.',
     ring: 'Ring', worker: 'Worker', band: 'Band',
     unset: '—',
     submit_tamper: 'Tamper the local record (demo)',
-    submit_tamper_hint: "— the worker's value stays in the local record; the chain gets a value from a different band. Pressing verify twice in the list flags the mismatch.",
+    submit_tamper_hint: "— the worker's value stays in the local record; the chain gets a value from a different band. Pressing verify in the list flags the mismatch.",
     data_h: 'Data admin (server administrator)',
     data_p: 'Manage the roster and the submission queue. Workers send scores through ring sync; here you only pull them and submit them to the chain.',
     d_workers: 'Workers', d_rings: 'Rings', d_records: 'Records',
@@ -126,13 +169,18 @@ const T = {
     name: 'Name',
     req_fail: 'Request failed.',
     q_h: 'Submission queue',
+    sc_h: 'Showcase', sc_p: 'Records the last 7 days of four sample workers as real preprod transactions, so judges can try decisions, public verify and verify without waiting for the chain. Guest data is cleared every night at 03:00 JST; the showcase stays.',
+    sc_seed: 'Seed the showcase', sc_seeding: 'Seeding…',
+    sc_status: (done, queued, waiting) => `${done} recorded / ${queued} queued / ${waiting} not sent`,
+    sc_confirm: (n, from, to) => `Record ${n} readings for ${from} to ${to} on preprod (days already there are skipped)? The container runs for tens of minutes.`,
+    sc_done: (readings, decisions, queued) => `Showcase: added ${readings} readings and ${decisions} decisions, queued ${queued}`,
     q_p: 'Values pulled from the partner and entered by hand. A partner value is never shown here either — band only.',
     q_pull: 'Pull from partner', q_pulling: 'Pulling…',
     q_submit: 'Submit to chain', q_submitting: 'Submitting… (a proof per value — this takes a while)',
     q_pulled: 'Pulled', q_new: 'new', q_dup: 'duplicate', q_conflict: 'conflict', q_badsig: 'bad signature',
     q_invalid: 'out of range', q_unknown_ring: 'unknown ring',
     q_result: 'Submitted', q_ok: 'recorded', q_skip: 'skipped', q_fail: 'failed',
-    q_tampered: 'the local record now disagrees with the chain (press verify twice in the list to catch it)',
+    q_tampered: 'the local record now disagrees with the chain (press verify in the list to catch it)',
     q_none: 'Nothing waiting to be submitted.', q_source: 'Source', q_status: 'Status',
     q_queued: 'Queued', q_queued_hint: 'the chain runner picks them up within a minute (a stopped container boots first, so allow a few minutes).',
     job_running: 'Submitting to the chain', job_done: 'Last submission finished', job_failed: 'Last submission failed', job_lost: 'Last submission was interrupted (its values stay queued and are retried)',
@@ -142,7 +190,7 @@ const T = {
     skip_already_submitted: 'day already recorded', skip_unknown_ring: 'unknown ring', skip_invalid_value: 'invalid value',
     sync_h: 'Ring sync',
     sync_p: "Sends your ring's score straight to the partner (the ring company). OHAYO! receives it only when the admin pulls. Ring:",
-    sync_score_in: 'Score (0–100)',
+    sync_score_in: 'Score (0–100)', sync_day: 'Day', sync_today: 'today', sync_yesterday: 'yesterday',
     sync_send: 'Send to partner', sync_sending: 'Sending…',
     sync_ok: 'Sent to the partner', sync_fail: 'Sending to the partner failed',
     sync_score: 'Score accepted by the partner', sync_after: 'It is recorded on chain after the admin pulls and submits it.',
@@ -315,8 +363,6 @@ async function reconcile(entryKeys, after) {
     const r = await api('/api/reconcile', { method: 'POST', body: { entryKeys } });
     if (r.valueMismatches || r.mismatches) {
       toast(`${t('reconcile_error')}: ${(r.valueMismatches || 0) + (r.mismatches || 0)}`, 'err');
-    } else if (r.localChecked) {
-      toast(`${t('reconciled_local')}: ${r.localChecked}`, 'ok');
     } else {
       toast(`${t('reconciled_chain')}: ${r.confirmed}`, 'ok');
     }
@@ -383,10 +429,129 @@ function ellipCell(text, { href = null } = {}) {
   return h('td', { class: 'ellip-td' }, h('div', { class: 'ellip-row' }, inner));
 }
 function verifiedCell(entry) {
-  return h('button', {
-    class: entry.verified ? 'reverify done' : 'reverify', type: 'button', title: t('some_pending'),
-    onclick: (e) => { e.stopPropagation(); reconcile([entry.entryKey], () => route()); },
-  }, entry.verified ? '✓ ' : '⚠ ', t('verify_btn'));
+  return h('span', { class: 'verify-cell' },
+    h('button', {
+      class: entry.verified ? 'reverify done' : 'reverify', type: 'button', title: t('some_pending'),
+      onclick: (e) => { e.stopPropagation(); reconcile([entry.entryKey], () => route()); },
+    }, entry.verified ? '✓ ' : '⚠ ', t('verify_btn')),
+    state.cfg.publicVerifyEnabled && h('a', {
+      class: 'small', href: `#/verify?entryKey=${encodeURIComponent(entry.entryKey)}`,
+      onclick: (e) => e.stopPropagation(),
+    }, t('verify_link')));
+}
+
+async function publicApi(path, opts = {}) {
+  const res = await fetch(path, {
+    method: opts.method || 'GET',
+    headers: opts.body != null ? { 'Content-Type': 'application/json' } : {},
+    body: opts.body != null ? JSON.stringify(opts.body) : undefined,
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw Object.assign(new Error(data.error || String(res.status)), { body: data, status: res.status });
+  return data;
+}
+
+function entryCard(entry) {
+  const txLink = entry.tx && txExplorerUrl(entry.tx.txHash);
+  const row = (label, value) => h('div', { class: 'kv' }, h('span', { class: 'muted small' }, label), value);
+  return h('div', { class: 'card verify-result' },
+    h('div', { class: 'verify-band' }, h('span', { class: `chip huge ${entry.band}` }, bandOf(entry.band)),
+      h('span', { class: 'muted small' }, t('verify_source'))),
+    row(t('verify_day'), h('span', {}, entry.periodDate)),
+    row(t('recorded'), h('span', { class: 'mono small' }, entry.recordedAt)),
+    row('entryKey', h('span', { class: 'mono small ellip', title: entry.entryKey }, entry.entryKey)),
+    row(t('verify_commitment'), h('span', { class: 'mono small ellip', title: entry.scoreCommitmentHex }, entry.scoreCommitmentHex)),
+    entry.tx && row(t('verify_tx'), txLink
+      ? h('a', { class: 'mono small ellip ext', href: txLink, target: '_blank', rel: 'noreferrer' }, entry.tx.txHash)
+      : h('span', { class: 'mono small ellip' }, entry.tx.txHash)),
+    entry.contractAddress && row(t('verify_contract'), h('span', { class: 'mono small ellip', title: entry.contractAddress }, entry.contractAddress)),
+    h('div', { class: 'not-on-ledger' }, h('strong', {}, t('verify_nol')), ': ',
+      entry.notOnLedger.map((k) => t(`nol_${k}`)).join(' / ')));
+}
+
+async function viewVerify() {
+  const params = new URLSearchParams(location.hash.split('?')[1] || '');
+  const input = h('input', { type: 'text', class: 'mono', placeholder: t('verify_ph'), value: params.get('entryKey') || params.get('tx') || '' });
+  const result = h('div', {});
+  const lookup = async () => {
+    const ref = input.value.trim();
+    if (!ref) return;
+    result.replaceChildren(h('p', { class: 'muted' }, t('verify_reading')));
+    const q = /^\d+$/.test(ref) ? `entryKey=${encodeURIComponent(ref)}` : `tx=${encodeURIComponent(ref)}`;
+    try {
+      result.replaceChildren(entryCard(await publicApi(`/api/public/entry?${q}`)));
+    } catch (e) {
+      result.replaceChildren(banner(e.message));
+    }
+  };
+  const receiptBox = h('textarea', { rows: '7', class: 'mono small', placeholder: '{ "v": 1, "entryKey": "…", … }' });
+  const handedReceipt = state.handedReceipt;
+  state.handedReceipt = null;
+  if (handedReceipt) receiptBox.value = handedReceipt;
+  const receiptResult = h('div', {});
+  const check = async () => {
+    let receipt;
+    try { receipt = JSON.parse(receiptBox.value); } catch { receiptResult.replaceChildren(banner(t('receipt_bad'))); return; }
+    receiptResult.replaceChildren(h('p', { class: 'muted' }, t('verify_reading')));
+    try {
+      const r = await publicApi('/api/public/receipt', { method: 'POST', body: { receipt } });
+      receiptResult.replaceChildren(
+        r.matches
+          ? h('div', { class: 'card receipt-ok' }, h('strong', {}, t('receipt_match')(fmtValue(r.value), r.entry.periodDate, bandOf(r.entry.band))))
+          : banner(t('receipt_mismatch')),
+        entryCard(r.entry));
+    } catch (e) {
+      receiptResult.replaceChildren(banner(e.status === 400 ? t('receipt_bad') : e.message));
+    }
+  };
+  mount(
+    h('h1', {}, t('verify_h')),
+    h('p', { class: 'muted' }, t('verify_p')),
+    h('form', { class: 'verify-form', onsubmit: (ev) => { ev.preventDefault(); lookup(); } },
+      input, h('button', { class: 'btn', type: 'submit' }, t('verify_go'))),
+    result,
+    h('h2', {}, t('receipt_h')),
+    h('p', { class: 'muted' }, t('receipt_p')),
+    receiptBox,
+    h('div', { class: 'queue-actions' }, h('button', { class: 'btn secondary', type: 'button', onclick: check }, t('receipt_check'))),
+    receiptResult,
+  );
+  if (input.value) lookup();
+  if (handedReceipt) check();
+}
+
+async function issueReceipt(entryKey) {
+  let receipt;
+  try {
+    receipt = await api('/api/disclosures', { method: 'POST', body: { entryKey } });
+  } catch (e) {
+    if (String(e.message) === 'unauthorized') return;
+    toast(e.body && e.body.code === 'no_opening' ? t('receipt_no_opening') : (e.body && e.body.error) || t('req_fail'), 'err');
+    return;
+  }
+  const text = JSON.stringify(receipt, null, 2);
+  const dlg = h('dialog', { class: 'decision-dialog' });
+  const close = () => { dlg.close(); dlg.remove(); };
+  const download = () => {
+    const url = URL.createObjectURL(new Blob([text], { type: 'application/json' }));
+    const a = h('a', { href: url, download: `ohayo-receipt-${receipt.periodDate}.json` });
+    document.body.append(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  };
+  dlg.append(
+    h('h2', {}, t('receipt_issued_h')),
+    h('p', { class: 'muted small' }, t('receipt_warn')),
+    h('pre', { class: 'receipt-json mono small' }, text),
+    h('div', { class: 'queue-actions' },
+      h('button', { class: 'btn', type: 'button', onclick: async () => { await navigator.clipboard.writeText(text); toast(t('receipt_copied'), 'ok'); } }, t('receipt_copy')),
+      h('button', { class: 'btn secondary', type: 'button', onclick: download }, t('receipt_download')),
+      h('a', { class: 'btn secondary', href: '#/verify', onclick: () => { state.handedReceipt = text; close(); } }, t('receipt_verify')),
+      h('button', { class: 'btn secondary', type: 'button', onclick: close }, t('receipt_close'))),
+  );
+  document.body.append(dlg);
+  dlg.showModal();
 }
 function pendingButtons(entries) {
   const pending = entries.filter((e) => !e.verified).map((e) => e.entryKey);
@@ -594,7 +759,7 @@ function workerCard(w, decisions) {
   const target = !w.workerId
     ? ''
     : canRecords()
-      ? `#/records?worker=${encodeURIComponent(w.workerId)}&from=${thisYm()}-01T00:00&to=${toLocalInput(Date.now())}`
+      ? `#/records?worker=${encodeURIComponent(w.workerId)}&from=${recordsFrom()}&to=${toLocalInput(Date.now())}`
       : `#/worker/${w.workerId}`;
   return h('div', {
     class: `card worker-card today-${te ? te.band : 'none'}`, role: 'button', tabindex: '0',
@@ -687,6 +852,9 @@ function monthPicker(ym, nav) {
 function ringSyncCard() {
   if (!state.cfg.partnerUrl || !state.me || !state.me.ringId) return null;
   const score = h('input', { name: 'score', type: 'number', min: '0', max: '100', step: '0.01', required: true });
+  const day = h('select', { name: 'day' },
+    h('option', { value: '0' }, t('sync_today')),
+    h('option', { value: '1' }, t('sync_yesterday')));
   const result = h('p', { class: 'sync-result muted' }, t('sync_hint'));
   const send = async (form) => {
     const btn = form.querySelector('button[type=submit]');
@@ -696,7 +864,11 @@ function ringSyncCard() {
       const res = await fetch(new URL('/v1/measurements', state.cfg.partnerUrl), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ringId: state.me.ringId, measuredAt: new Date().toISOString(), score: Number(score.value) }),
+        body: JSON.stringify({
+          ringId: state.me.ringId,
+          measuredAt: new Date(Date.now() - Number(day.value) * 86_400_000).toISOString(),
+          score: Number(score.value),
+        }),
       });
       const r = await res.json().catch(() => null);
       if (!res.ok) throw new Error((r && r.error) || String(res.status));
@@ -716,6 +888,7 @@ function ringSyncCard() {
     h('p', { class: 'muted' }, t('sync_p'), ' ', h('span', { class: 'mono' }, state.me.ringId)),
     h('div', { class: 'submit-row' },
       h('label', {}, t('sync_score_in'), score),
+      h('label', {}, t('sync_day'), day),
       h('button', { class: 'btn', type: 'submit' }, t('sync_send'))),
     result);
 }
@@ -775,6 +948,7 @@ async function viewWorkerSelf() {
     showValue && h('td', { class: 'mono' }, e.value != null ? fmtValue(e.value) : '—'),
     h('td', {}, fmtTime(e.recordedAtMs, tz)),
     h('td', {}, verifiedCell(e)),
+    state.cfg.receiptsEnabled && h('td', {}, h('button', { class: 'reverify', type: 'button', onclick: () => issueReceipt(e.entryKey) }, t('receipt_issue'))),
   ));
 
   const monthLabel = state.lang === 'ja' ? `${selY}年${selM}月の記録` : `${ym}${t('month_h')}`;
@@ -791,7 +965,8 @@ async function viewWorkerSelf() {
           h('thead', {}, h('tr', {},
             h('th', {}, t('day')), h('th', {}, t('band')), h('th', {}, t('dec_h')),
             showValue && h('th', {}, t('value')),
-            h('th', {}, t('recorded')), h('th', {}, t('verified')))),
+            h('th', {}, t('recorded')), h('th', {}, t('verified')),
+            state.cfg.receiptsEnabled && h('th', {}, t('receipt_issue')))),
           h('tbody', {}, rows)))
       : h('p', { class: 'muted' }, t('no_entries')),
   );
@@ -841,10 +1016,16 @@ async function viewWorker(workerId) {
   );
 }
 
+function recordsFrom() {
+  const monthStart = `${thisYm()}-01T00:00`;
+  const twoWeeks = `${toLocalInput(Date.now() - 14 * 86_400_000).slice(0, 10)}T00:00`;
+  return twoWeeks < monthStart ? twoWeeks : monthStart;
+}
+
 async function viewRecords() {
   const q = new URLSearchParams(location.hash.split('?')[1] || '');
   const nowStr = toLocalInput(Date.now());
-  let from = q.get('from') || `${thisYm()}-01T00:00`;
+  let from = q.get('from') || recordsFrom();
   let to = q.get('to') || nowStr;
   if (to > nowStr) to = nowStr;
   if (from > to) from = to;
@@ -1141,12 +1322,36 @@ function queueSection(rows, job) {
       : h('p', { class: 'muted' }, t('q_none')));
 }
 
+function showcaseSection(status) {
+  if (!status) return null;
+  const r = status.readings || {};
+  const seed = state.cfg.submitEnabled
+    ? h('button', { class: 'btn', type: 'button', onclick: (ev) => {
+        if (!confirm(t('sc_confirm')(status.planned, status.next.from, status.next.to))) return;
+        busyButton(ev.currentTarget, 'sc_seeding', 'sc_seed', async () => {
+          const res = await api('/api/showcase', { method: 'POST', body: {} });
+          toast(t('sc_done')(res.readings, res.decisions, res.queued), 'ok');
+        });
+      } }, t('sc_seed'))
+    : null;
+  return h('section', { class: 'crud-section' },
+    h('h2', {}, t('sc_h')),
+    h('p', { class: 'muted' }, t('sc_p')),
+    h('p', { class: 'small' }, t('sc_status')(status.submitted, r.queued || 0, (r.pending || 0) + (r.failed || 0))),
+    seed && h('div', { class: 'queue-actions' }, seed));
+}
+
 async function viewDataAdmin() {
   mount(h('div', { class: 'loading' }, '…'));
   let roster;
   let staged;
+  let showcase = null;
   try {
-    [roster, staged] = await Promise.all([api('/api/roster'), api('/api/staged')]);
+    [roster, staged, showcase] = await Promise.all([
+      api('/api/roster'),
+      api('/api/staged'),
+      state.me.guest ? null : api('/api/showcase').catch(() => null),
+    ]);
   } catch (e) {
     if (String(e.message) === 'unauthorized') return;
     mount(banner(t('err_generic')));
@@ -1158,6 +1363,7 @@ async function viewDataAdmin() {
     workersSection(roster),
     ringsSection(roster),
     queueSection(staged.rows, staged.job),
+    showcaseSection(showcase),
   );
 }
 
@@ -1185,20 +1391,56 @@ function renderChrome() {
     links.push(link('#/overview', t('nav_overview'), here.startsWith('#/overview') || here.startsWith('#/worker')));
     if (canRecords()) links.push(link('#/records', t('nav_records'), here === '#/records'));
     if (canAdmin()) links.push(link('#/data', t('nav_data'), here === '#/data'));
+    if (state.cfg.publicVerifyEnabled) links.push(link('#/verify', t('nav_verify'), here === '#/verify'));
     nav.replaceChildren(...links);
+  } else if (state.cfg.publicVerifyEnabled) {
+    nav.hidden = false;
+    nav.replaceChildren(h('a', { href: '#/verify', class: location.hash.startsWith('#/verify') ? 'active' : '' }, t('nav_verify')));
   } else {
     nav.hidden = true;
   }
 }
 
+const LS_GUIDE = 'ohayo.guide.open';
+let guideTicket = 0;
+
+async function guidePanel() {
+  const ticket = ++guideTicket;
+  if (!state.me) { document.getElementById('guide-panel')?.remove(); return; }
+  let steps;
+  try { steps = (await api('/api/guide')).steps; } catch { return; }
+  if (ticket !== guideTicket) return;
+  const existing = document.getElementById('guide-panel');
+  const stored = localStorage.getItem(LS_GUIDE);
+  const open = stored === null ? Boolean(state.me.guest) : stored === '1';
+  const done = steps.filter((s) => s.done).length;
+  const items = steps.map((s, i) => {
+    const [todo, proves] = t(`guide_${s.key}`);
+    return h('li', { class: s.done ? 'done' : '' },
+      h('span', { class: 'guide-mark' }, s.done ? '✓' : String(i + 1)),
+      h('div', {},
+        h('div', {}, h('strong', {}, `${t('guide_do')}: `), todo,
+          s.key === 'public_verify' ? h('span', {}, ' ', h('a', { href: '#/verify' }, t('nav_verify'))) : null),
+        h('div', { class: 'muted small' }, `${t('guide_proves')}: ${proves}`)));
+  });
+  const panel = h('details', { id: 'guide-panel', class: 'guide-panel', ...(open ? { open: '' } : {}) },
+    h('summary', {}, `${t('guide_h')} — ${done} / ${steps.length}`),
+    h('ol', {}, items));
+  panel.addEventListener('toggle', () => localStorage.setItem(LS_GUIDE, panel.open ? '1' : '0'));
+  if (existing) existing.replaceWith(panel);
+  else document.getElementById('view').before(panel);
+}
+
 async function route() {
   renderChrome();
   const path = location.hash.split('?')[0] || '#/';
-  if (!state.token) { viewLogin(); return; }
+  if (path === '#/verify') { guidePanel(); return viewVerify(); }
+  if (!state.token) { guidePanel(); viewLogin(); return; }
   if (!state.me) {
     try { state.me = await api('/api/me'); } catch { viewLogin(); return; }
     renderChrome();
   }
+  guidePanel();
   if (path === '#/data') { if (!canAdmin()) { location.hash = home(); return; } return viewDataAdmin(); }
   if (path === '#/records') {
     if (!canRecords()) { location.hash = home(); return; }

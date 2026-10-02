@@ -134,19 +134,10 @@ chain receives a value from a *different* band.
 1. Have the worker send a score for a day that ring has not submitted yet (the
    contract rejects a duplicate `(ring, day)`), pull it, tick the box and press
    チェーンへ送信. The toast says the local record now disagrees with the chain.
-2. Go to 一覧 and press **照合** on that row.
-3. **Press 照合 a second time.** This is not optional — see below.
-4. The second press reports a mismatch, **corrects the local row from the chain**
-   (`正常` → `危険` in the seeded example), and withdraws the verification.
-
-> **照合 is two-phase — the first press does not touch the chain.**
-> `reconcileSubmissions` runs with `phased: true`. For a row whose `reconciled_at`
-> is still NULL it just stamps `chain_verified_at` / `reconciled_at` from the
-> stored record and returns `localChecked: 1`; only once `reconciled_at` is set
-> does the next call open an `indexerConditionReader` and query the chain. So a
-> single press on a fresh row looks like "nothing happened" — the toast says
-> 「ローカル記録で照合済み（もう一度押すとチェーンに直接照会）」. Press again.
-> Expect `{ mismatches: 1, valueMismatches: 1 }` on the second press.
+2. Go to 一覧 and press **照合** on that row. One press reads the chain.
+3. It reports a mismatch (`{ mismatches: 1, valueMismatches: 1 }`), **corrects the
+   local row from the chain** (`正常` → `危険` in the seeded example), and withdraws
+   the verification.
 
 Say: *the operator's own database was altered and the chain caught it. That is the
 property a signed database cannot give you — the company that signed it is the

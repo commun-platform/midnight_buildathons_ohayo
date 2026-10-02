@@ -31,6 +31,7 @@ const VAR_NAMES = [
   'GUEST_SUBMISSION_LIMIT',
   'GUEST_HOURLY_LIMIT',
   'WALLET_NETWORK_ID',
+  'OPENING_KEY',
 ] as const;
 
 export type WorkerVars = Partial<Record<(typeof VAR_NAMES)[number], string>>;
@@ -45,7 +46,11 @@ export function workerVars(env: object): Record<string, string | undefined> {
   return vars;
 }
 
-export function containerRunner(fetchRunner: (request: Request) => Promise<Response>): ChainRunner {
+export interface ContainerRunner extends ChainRunner {
+  open(scoreCenti: number, nonceHex: string): Promise<string>;
+}
+
+export function containerRunner(fetchRunner: (request: Request) => Promise<Response>): ContainerRunner {
   async function call(pathname: string, body?: unknown): Promise<Response> {
     return fetchRunner(
       new Request(`http://chain-runner${pathname}`, {
@@ -59,6 +64,11 @@ export function containerRunner(fetchRunner: (request: Request) => Promise<Respo
     return new Error(`the chain runner answered ${response.status}: ${(await response.text()).slice(0, 300)}`);
   }
   return {
+    async open(scoreCenti: number, nonceHex: string) {
+      const response = await call('/open', { scoreCenti, nonceHex });
+      if (!response.ok) throw await failure(response);
+      return ((await response.json()) as { scoreCommitmentHex: string }).scoreCommitmentHex;
+    },
     async startJob(jobId: string, request: RunnerSubmitRequest) {
       const response = await call('/jobs', { jobId, request });
       if (response.status !== 202) throw await failure(response);
@@ -78,7 +88,7 @@ export function containerRunner(fetchRunner: (request: Request) => Promise<Respo
   };
 }
 
-export function gatewayDeps(env: WorkerBindings & object, runner: ChainRunner): GatewayDeps {
+export function gatewayDeps(env: WorkerBindings & object, runner: ContainerRunner): GatewayDeps {
   const vars = workerVars(env);
   const db = d1Database(env.DB);
   const partnerUrl = vars.PARTNER_URL?.trim();
@@ -95,7 +105,13 @@ export function gatewayDeps(env: WorkerBindings & object, runner: ChainRunner): 
       ...(vars.PUBLIC_MIDNIGHT_EXPLORER_URL ? { explorerUrl: vars.PUBLIC_MIDNIGHT_EXPLORER_URL } : {}),
       ...(vars.PUBLIC_PARTNER_URL || partnerUrl ? { partnerUrl: vars.PUBLIC_PARTNER_URL || partnerUrl } : {}),
       submitQueued: true,
+      ...(vars.CONDITION_REGISTRY_CONTRACT_ADDRESS
+        ? { contractAddress: vars.CONDITION_REGISTRY_CONTRACT_ADDRESS }
+        : {}),
     },
+    chain: runner,
+    openCommitment: (scoreCenti, nonceHex) => runner.open(scoreCenti, nonceHex),
+    ...(vars.OPENING_KEY?.trim() ? { openingKeyHex: vars.OPENING_KEY.trim() } : {}),
     ...(partnerUrl && apiKey && publicKeyHex ? { partner: { url: partnerUrl, apiKey, publicKeyHex } } : {}),
     ...(partnerBinding
       ? { fetch: ((input: RequestInfo | URL, init?: RequestInit) => partnerBinding.fetch(new Request(input, init))) as typeof fetch }

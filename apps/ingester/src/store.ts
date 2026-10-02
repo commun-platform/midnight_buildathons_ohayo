@@ -31,8 +31,9 @@ export async function submittedEntryKeys(db: SqlDatabase): Promise<Set<string>> 
 
 const INSERT_SUBMISSION = `INSERT OR IGNORE INTO submissions (
   entry_key, ring_id, period_start_ms, timezone, recorded_at_ms,
-  band, score_commitment_hex, tx_id, tx_hash, block_height, submitted_at, submitted_by
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+  band, score_commitment_hex, tx_id, tx_hash, block_height, submitted_at, submitted_by,
+  opening_ciphertext
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
 
 export function submissionInserts(records: readonly SubmissionRecord[]): SqlStatement[] {
   return records.map((record) => ({
@@ -50,6 +51,7 @@ export function submissionInserts(records: readonly SubmissionRecord[]): SqlStat
       record.blockHeight ?? null,
       record.submittedAt,
       record.submittedBy ?? null,
+      record.openingCiphertext ?? null,
     ],
   }));
 }

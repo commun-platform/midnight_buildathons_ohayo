@@ -189,6 +189,9 @@ test('handleApi: /api/config is unauthenticated display strings', async () => {
     submitQueued: false,
     partnerPullEnabled: false,
     partnerUrl: null,
+    contractAddress: null,
+    publicVerifyEnabled: false,
+    receiptsEnabled: false,
     loginEnabled: true,
     guestEntry: false,
     walletNetworkId: 'preprod',
@@ -235,7 +238,7 @@ test('handleApi: POST /api/reconcile — auth, scope, 501/200', async () => {
     salt: SALT,
     reconcile: async (keys: readonly string[]) => {
       seen = keys;
-      return { confirmed: keys.length, localChecked: 0, mismatches: 0, valueMismatches: 0, missing: 0 };
+      return { confirmed: keys.length, mismatches: 0, valueMismatches: 0, missing: 0 };
     },
   };
 

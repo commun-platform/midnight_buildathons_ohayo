@@ -380,3 +380,20 @@ a.ext { color: var(--accent); }
 .small { font-size: 0.8rem; }
 
 .loading { color: var(--muted); }
+.verify-form { display: flex; gap: 0.5rem; flex-wrap: wrap; margin: 0.5rem 0 1rem; }
+.verify-form input { flex: 1 1 18rem; min-width: 0; }
+.verify-result { margin: 0 0 1.25rem; display: grid; gap: 0.45rem; }
+.verify-band { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; }
+.verify-result .kv { display: grid; grid-template-columns: minmax(7rem, 11rem) minmax(0, 1fr); gap: 0.5rem; align-items: baseline; }
+.verify-result .ellip { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.not-on-ledger { margin-top: 0.35rem; padding: 0.5rem 0.65rem; border-radius: 8px; background: var(--accent-weak); color: var(--accent); font-size: 0.9rem; }
+.receipt-ok { margin: 0.5rem 0; border-color: var(--band-normal); color: var(--band-normal); }
+.receipt-json { max-height: 18rem; overflow: auto; padding: 0.6rem; border-radius: 8px; background: var(--bg); border: 1px solid var(--border); white-space: pre-wrap; overflow-wrap: anywhere; }
+.verify-cell { display: inline-flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; }
+textarea.mono { width: 100%; box-sizing: border-box; }
+.guide-panel { margin: 0.75rem auto 0; max-width: var(--max, 1100px); padding: 0.6rem 0.9rem; border: 1px solid var(--border); border-radius: 10px; background: var(--card, var(--bg)); }
+.guide-panel summary { cursor: pointer; font-weight: 600; }
+.guide-panel ol { list-style: none; padding: 0; margin: 0.6rem 0 0.2rem; display: grid; gap: 0.55rem; }
+.guide-panel li { display: grid; grid-template-columns: 1.6rem minmax(0, 1fr); gap: 0.5rem; align-items: start; }
+.guide-mark { display: inline-grid; place-items: center; width: 1.5rem; height: 1.5rem; border-radius: 50%; border: 1px solid var(--border); font-size: 0.8rem; }
+.guide-panel li.done .guide-mark { background: var(--band-normal-bg); color: var(--band-normal); border-color: var(--band-normal); }

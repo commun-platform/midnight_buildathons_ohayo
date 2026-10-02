@@ -13,11 +13,13 @@ import {
   loadConditionMigrations,
 } from '@midnight-demo/db';
 import type { PartnerConfig } from '@midnight-demo/ingester/partner';
+import { resetSandbox } from '@midnight-demo/ingester/showcase';
 import type { ConditionChain } from '@midnight-demo/ingester-core';
 
 import { authConfigFromEnv } from './auth.js';
 import { reconcileWith, submitStagedWith } from './chain-deps.js';
 import { saltFromHex, type GatewayDeps } from './deps.js';
+import { bytesToHex, hexToBytes } from '@midnight-demo/shared';
 import { handleApi } from './routes.js';
 import { securityHeaders } from './security.js';
 
@@ -59,9 +61,11 @@ function makeDeps(): GatewayDeps {
       network: env.PUBLIC_MIDNIGHT_NETWORK,
       explorerUrl: env.PUBLIC_MIDNIGHT_EXPLORER_URL,
       partnerUrl: env.PUBLIC_PARTNER_URL?.trim() || env.PARTNER_URL?.trim() || undefined,
+      contractAddress: env.CONDITION_REGISTRY_CONTRACT_ADDRESS?.trim() || undefined,
     },
     partner: partnerFromEnv(env),
     auth: authConfigFromEnv(env),
+    ...(env.OPENING_KEY?.trim() ? { openingKeyHex: env.OPENING_KEY.trim() } : {}),
   };
 }
 
@@ -82,6 +86,14 @@ async function chainCapability(): Promise<ConditionChain | undefined> {
   return chain.conditionChain(chain.resolveNetwork(network), address) as ConditionChain;
 }
 
+async function commitmentOpener(): Promise<GatewayDeps['openCommitment']> {
+  // @ts-ignore
+  const commitment = await import('@midnight-demo/shared/commitment').catch(() => null);
+  if (!commitment) return undefined;
+  return async (scoreCenti, nonceHex) =>
+    bytesToHex(commitment.conditionScoreCommitment(scoreCenti, hexToBytes(nonceHex)));
+}
+
 async function serveStatic(pathname: string, headers: Record<string, string>): Promise<Response> {
   if (!fs.existsSync(dashboardDir)) return new Response('Not found', { status: 404 });
   const clean = pathname.replace(/\.\.+/g, '').replace(/^\/+/, '');
@@ -99,6 +111,8 @@ async function serveStatic(pathname: string, headers: Record<string, string>): P
   });
 }
 
+const SANDBOX_RESET_MS = 60 * 60_000;
+
 export async function startServer(
   depsInput?: GatewayDeps,
   port = Number(process.env.PORT ?? 8787),
@@ -110,7 +124,18 @@ export async function startServer(
   const chain = deps.reconcile && deps.submitStaged ? undefined : await chainCapability();
   if (chain) {
     deps.reconcile ??= reconcileWith(deps.db, chain);
-    deps.submitStaged ??= submitStagedWith(deps.db, chain, deps.salt);
+    deps.submitStaged ??= submitStagedWith(deps.db, chain, deps.salt, deps.openingKeyHex);
+    deps.chain ??= chain;
+  }
+  if (deps.chain) deps.openCommitment ??= await commitmentOpener();
+
+  if (deps.auth?.guestEntry) {
+    setInterval(() => {
+      resetSandbox(deps.db).catch((error: unknown) => {
+        process.stderr.write(`sandbox reset failed: ${error instanceof Error ? error.message : String(error)}
+`);
+      });
+    }, SANDBOX_RESET_MS).unref();
   }
 
   const staticHeaders = securityHeaders(deps.config?.partnerUrl);

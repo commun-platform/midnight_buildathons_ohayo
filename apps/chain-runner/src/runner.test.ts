@@ -151,3 +151,12 @@ test('an aborted job is reported as failed, frees the runner, and a late result 
   await new Promise((resolve) => setTimeout(resolve, 10));
   assert.equal(((await (await handleRunner(new Request('http://runner/jobs/job-1'), d)).json()) as { state: string }).state, 'failed');
 });
+
+test('open recomputes a commitment and rejects malformed input', async () => {
+  const d = { ...deps(), commit: (scoreCenti: number, nonceHex: string) => `${scoreCenti}:${nonceHex.slice(0, 4)}` };
+  const ok = await handleRunner(post('/open', { scoreCenti: 7200, nonceHex: '11'.repeat(32) }), d);
+  assert.deepEqual(await ok.json(), { scoreCommitmentHex: '7200:1111' });
+  assert.equal((await handleRunner(post('/open', { scoreCenti: 7200.5, nonceHex: '11'.repeat(32) }), d)).status, 400);
+  assert.equal((await handleRunner(post('/open', { scoreCenti: 7200, nonceHex: 'zz' }), d)).status, 400);
+  assert.equal((await handleRunner(post('/open', { scoreCenti: 7200, nonceHex: '11'.repeat(32) }), deps())).status, 501);
+});

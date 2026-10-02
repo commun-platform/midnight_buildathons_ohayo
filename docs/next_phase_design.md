@@ -789,6 +789,69 @@ operator claim), and `one_page_brief.md`. The top README leads with the one-line
 the video, the hosted URL with "try as a guest", the three core claims and the §9.2
 paths. A ~3-minute video follows §9.3.
 
+### 9.12 As built in phase 7
+
+- **Verify is one press** (§9.8): `reconcileSubmissions` always reads the chain; the
+  `phased` mode and `localChecked` are gone. A mismatch writes `reconcile.mismatch` to
+  `audit_log` (the guide's tamper step).
+- **Public verifier** (§9.5): `apps/gateway/src/public.ts`. `GET /api/public/entry?entryKey=`
+  or `?tx=` (a tx hash or id resolves through `submissions`) reads the entry through
+  `GatewayDeps.chain` — the in-process `ConditionChain` on Node, the chain runner's `/read`
+  hosted — and returns band, day, `recordedAt`, commitment, the tx when known, the contract
+  and `notOnLedger: [workerName, ringId, value]`. Hosted, `/api/public/*` is limited to 30
+  requests a minute per client IP (`PUBLIC_RATE_LIMITER`). The SPA's `#/verify` needs no
+  login and is linked from every entry and from the nav.
+- **Openings and receipts** (§9.6): `recordOutcomes` seals `{ scoreCenti, nonceHex }` with
+  AES-256-GCM under `OPENING_KEY`, bound to the entry key as associated data
+  (`packages/shared/src/opening.ts`), into `submissions.opening_ciphertext` — only for a
+  real submission, never for a tampered or recovered one (its nonce would not match the
+  chain). `OPENING_KEY` is generated once into `.state/gateway/opening-key` (local) and
+  `.state/cloudflare/opening-key` (hosted); losing it loses the openings. `POST
+  /api/disclosures { entryKey }` (the entry's own worker only; 409 `no_opening` for older
+  entries) returns the receipt and writes `disclosure.issue` to `audit_log`; the worker's
+  history has a "receipt" button with copy / download. `POST /api/public/receipt` recomputes
+  `persistentCommit` — `@midnight-demo/shared/commitment` in process on Node, the chain
+  runner's new `POST /open` hosted — and compares it with the on-chain commitment.
+  `npm run condition:verify-receipt -- receipt.json` checks a receipt against the chain
+  without trusting any server.
+- **Guide** (§9.9): `GET /api/guide` (`apps/gateway/src/guide.ts`) ticks measure (a reading
+  for the guest's ring), submit (pull, then a chain-confirmed submission by the session),
+  decide (a work decision by the session), public verify (a receipt issued by the
+  session — the public endpoints have no session to attribute) and tamper (a recorded
+  mismatch). The panel sits above every page, open by default for guests, its state kept
+  in `localStorage`. Links to source and tests are left out; the guide links `/verify`.
+  A decision needs a recorded entry, and before the showcase is seeded the guest's own
+  entry is the only one, so the guide puts submit before decide (§9.3 had decide second,
+  on the showcase history); with the showcase a guest can decide on a past showcase day
+  in the list without waiting. The receipt dialog's "check it in public verify" hands the
+  receipt to `/verify` in memory (never in the URL, which would carry the value) and
+  checks it at once.
+- **Showcase** (§9.7): `apps/ingester/src/showcase.ts`, Worker-safe. Four sample workers
+  (`showcase-a` … `showcase-d`, rings `ring-showcase-*`) × the **7** days before today
+  (not 14, to halve container time; 27 readings, one day missing, every band, two danger
+  days with seeded decisions — one `rested`, one `worked` with a reason, `decided_by`
+  `showcase`). Each value is keyed to its date (the weekday slot), so seeding again on a
+  later day only adds the new days and never contradicts a day already on chain;
+  `external_id` `showcase:<ring>:<date>` makes it idempotent. The readings use source
+  `partner_api`, so the admin's queue shows bands only. There is no CLI: the wallet admin
+  (never the guest sandbox) presses **Seed the showcase** in Data admin —
+  `POST /api/showcase` seeds D1, writes `showcase.seed` to `audit_log` and, hosted, queues
+  the readings for the chain runner (three jobs of up to 10); `GET /api/showcase` reports
+  progress. On a local `gateway serve` the readings land in the queue for the usual
+  submit. The list's default range now reaches back 14 days so the showcase is visible.
+- **Nightly reset** (§9.4): not a snapshot restore — the showcase rows are never changed
+  by guests (a guest admin can only submit, tamper and delete its own ring's readings), so
+  `resetSandbox` removes what expired guests made instead: their worker, ring, readings,
+  `submissions` rows, audit rows and decisions, plus expired login challenges. Live
+  guests (session not yet expired) are kept. Hosted it runs on a second Cron,
+  `0 18 * * *` (03:00 JST, `apps/worker/src/schedule.ts`); the Node server runs it hourly
+  when `GUEST_ENTRY=1`. Migration `0002_guest_decisions_resettable.sql` narrows the
+  `work_decisions` delete trigger to `decided_by` `guest:%`, so real decisions stay
+  append-only; a guest decision that a kept row supersedes is kept too. Guest entries
+  already on chain stay there, and the partner mock's own database is not touched.
+- **Status banner** (§9.8): not a separate banner — the queue screen already shows the
+  chain runner's stage while a job runs (§8.6).
+
 ---
 
 ## 10. Privacy changes
@@ -822,8 +885,8 @@ Each phase is one session. Update **Status** when a phase lands.
 | 3 | Work decisions (feature 7) | `apps/gateway`, `apps/dashboard/public/app.js`, `0001_condition_schema.sql` | required-reason rule and append-only behaviour tested | done (2026-09-30) — also recorded, rejected without a reason, and corrected in the browser on the local devnet |
 | 4 | Preprod deploy + runbook (feature 4) | `docs/deploy_preprod.md`, `docs/ja/deploy_preprod.md`, `run.sh`, `run.ps1` | contract on preprod following only the runbook | done (2026-09-30) — deployed with the lane the runbook documents; the runbook records that run |
 | 5 | Wallet login + guest entry (features 5, 8) | `apps/gateway/src/auth.ts`, `apps/dashboard/public/`, tests | token login removed; challenge replay, expiry, wrong key, invite reuse rejected; guest limits tested | done (2026-09-30) — guest flow walked in the browser on the local devnet; an admin login with a real Lace wallet succeeded after adopting the connector-spec `midnight_signed_message:` prefix |
-| 6 | Worker + D1 + containers (feature 6) | `apps/worker/`, `apps/chain-runner/`, `apps/partner-mock/src/worker.ts`, `run.sh cloudflare` (§8.6) | the full flow works on workers.dev with the development host off; memory measured for §9.10 | built and tested locally (2026-09-30): unit tests, both Workers bundle, the container image builds (`run.sh cloudflare check`); deployed 2026-10-02 to `https://midnight-proof-ohayo.commun-official.workers.dev` with `run.sh cloudflare deploy` + `checkpoint` (D1 migrated, checkpoint in R2); a guest reading went from the ring sync card through pull, the queue and the chain runner to a chain-confirmed preprod entry on 2026-10-03; measured about 600 MB and a pinned CPU, so the runner is 1 vCPU / 3 GiB (§8.6); the admin logged in with Lace on the hosted site |
-| 7 | Evaluation layer: public verifier, disclosure receipt, guide, verify / tamper UX, showcase seed, judging profile (features 9–12) | `apps/gateway`, `apps/dashboard/public/`, `apps/development/condition-cli` | a guest completes the golden path on workers.dev in 5 minutes | not started |
+| 6 | Worker + D1 + containers (feature 6) | `apps/worker/`, `apps/chain-runner/`, `apps/partner-mock/src/worker.ts`, `run.sh cloudflare` (§8.6) | the full flow works on workers.dev with the development host off; memory measured for §9.10 | done (2026-10-03) — built and tested locally (2026-09-30): unit tests, both Workers bundle, the container image builds (`run.sh cloudflare check`); deployed 2026-10-02 to `https://midnight-proof-ohayo.commun-official.workers.dev` with `run.sh cloudflare deploy` + `checkpoint` (D1 migrated, checkpoint in R2); a guest reading went from the ring sync card through pull, the queue and the chain runner to a chain-confirmed preprod entry on 2026-10-03; measured about 600 MB and a pinned CPU, so the runner is 1 vCPU / 3 GiB (§8.6); the admin logged in with Lace on the hosted site |
+| 7 | Evaluation layer: public verifier, disclosure receipt, guide, verify / tamper UX, showcase seed, judging profile (features 9–12) | `apps/gateway`, `apps/dashboard/public/`, `apps/development/condition-cli` | a guest completes the golden path on workers.dev in 5 minutes | in progress — verify, public verifier, receipts, guide, showcase seed and nightly reset built (§9.12); showcase seeded on preprod 2026-10-03 (27 entries, about 22 minutes of container time); a guest run then took 5 min 32 s by API with a warm container (12 minutes before the showcase), almost all of it two chain waits |
 | 8 | Submission documents + video (§9.11) | `docs/submission/`, `docs/ja/submission/`, `README.md` | every claim in the evidence matrix resolves to source, test or tx | not started |
 
 ---

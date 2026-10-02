@@ -7,6 +7,7 @@ import * as Config from 'effect/Config';
 import * as Effect from 'effect/Effect';
 
 import type { ChainRunnerContainer, ProofServerContainer } from './src/containers.js';
+import { SANDBOX_RESET_CRON } from './src/schedule.js';
 
 const here = import.meta.dirname;
 const repoRoot = path.resolve(here, '../..');
@@ -55,7 +56,7 @@ export const Ohayo = Cloudflare.Worker('Ohayo', {
   name: workerName,
   main: path.join(here, 'src/worker.ts'),
   compatibility: { date: compatibilityDate, flags: ['nodejs_compat'] },
-  crons: ['* * * * *'],
+  crons: ['* * * * *', SANDBOX_RESET_CRON],
   assets: {
     directory: path.join(repoRoot, 'apps/dashboard/public'),
     runWorkerFirst: true,
@@ -68,6 +69,10 @@ export const Ohayo = Cloudflare.Worker('Ohayo', {
     AUTH_RATE_LIMITER: Cloudflare.RateLimit('AUTH_RATE_LIMITER', {
       namespaceId: 4102,
       simple: { limit: 20, period: 60 },
+    }),
+    PUBLIC_RATE_LIMITER: Cloudflare.RateLimit('PUBLIC_RATE_LIMITER', {
+      namespaceId: 4103,
+      simple: { limit: 30, period: 60 },
     }),
     CHAIN_RUNNER: Cloudflare.Container<ChainRunnerContainer>('ChainRunner', {
       className: 'ChainRunnerContainer',
@@ -96,6 +101,7 @@ export const Ohayo = Cloudflare.Worker('Ohayo', {
     GUEST_HOURLY_LIMIT: '30',
     INGESTER_SALT_HEX: Config.Redacted('INGESTER_SALT_HEX'),
     SESSION_SECRET: Config.Redacted('SESSION_SECRET'),
+    OPENING_KEY: Config.Redacted('OPENING_KEY'),
     ADMIN_WALLET_KEY_HASHES: Config.Redacted('ADMIN_WALLET_KEY_HASHES'),
     PARTNER_API_KEY: Config.Redacted('PARTNER_API_KEY'),
     PARTNER_PUBLIC_KEY: Config.String('PARTNER_PUBLIC_KEY'),

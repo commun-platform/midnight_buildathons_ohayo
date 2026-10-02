@@ -15,7 +15,8 @@ import { handlePartner } from '@midnight-demo/partner-mock/handler';
 import { loadPartnerMigrations } from '@midnight-demo/partner-mock/migrations';
 import { generatePartnerKeys, partnerSigner } from '@midnight-demo/partner-mock/signing';
 
-import { handleApi, TEST_ADMIN_KEY_HASH } from './test-support.js';
+import { enqueueStagedWith } from './chain-deps.js';
+import { handleApi, TEST_ADMIN_KEY_HASH, testAuth } from './test-support.js';
 
 const SALT = new Uint8Array(16).fill(0x5a);
 const ADMIN = 'admin';
@@ -203,4 +204,38 @@ test('admin partner pull: queue signed partner scores without exposing the raw v
 
   const unreachable = { ...deps, fetch: (async () => { throw new Error('ECONNREFUSED'); }) as typeof fetch };
   assert.equal((await handleApi(POST('/api/partner/pull', {}, ADMIN), unreachable))?.status, 502);
+});
+
+test('only a wallet admin seeds the showcase; a queued deployment queues it for the chain runner', async () => {
+  const db = await bareDb();
+  const deps = {
+    db,
+    reader: fakeReader(new Map()),
+    salt: SALT,
+    auth: testAuth({ guestEntry: true }),
+    config: { submitQueued: true },
+    submitStaged: enqueueStagedWith(db),
+  };
+  const call = (r: Request) => handleApi(r, deps);
+
+  assert.equal((await call(POST('/api/showcase', {})))?.status, 401);
+  const guest = await body(await call(POST('/api/auth/guest', {})));
+  const guestAdmin = await body(await call(POST('/api/auth/guest/persona', { role: 'admin' }, guest.session)));
+  const refused = await call(POST('/api/showcase', {}, guestAdmin.session));
+  assert.equal(refused?.status, 403);
+  assert.equal((await call(POST('/api/showcase', {}, guest.session)))?.status, 403);
+
+  const before = await body(await call(GET('/api/showcase', ADMIN)));
+  assert.deepEqual([before.workers, before.planned, before.submitted], [4, 27, 0]);
+
+  const seeded = await body(await call(POST('/api/showcase', {}, ADMIN)));
+  assert.deepEqual([seeded.readings, seeded.decisions, seeded.queued], [27, 2, 27]);
+  assert.equal(seeded.status.readings.queued, 27);
+  const again = await body(await call(POST('/api/showcase', {}, ADMIN)));
+  assert.deepEqual([again.readings, again.decisions, again.queued], [0, 0, 0]);
+
+  const staged = await body(await call(GET('/api/staged', ADMIN)));
+  assert.ok(staged.rows.every((r: { value: unknown }) => r.value === null));
+  const audit = await db.all<{ action: string }>("SELECT action FROM audit_log WHERE action = 'showcase.seed'");
+  assert.equal(audit.length, 2);
 });

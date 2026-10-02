@@ -10,7 +10,9 @@ import type { SqlDatabase } from '@midnight-demo/db';
 import { handleAdmin } from './admin.js';
 import { authenticate } from './auth.js';
 import { handleDecisions } from './decisions.js';
+import { handleGuide, recordMismatch } from './guide.js';
 import { handleAuth } from './login.js';
+import { handlePublic } from './public.js';
 import type { GatewayDeps } from './deps.js';
 
 export type { GatewayDeps } from './deps.js';
@@ -131,6 +133,9 @@ function handleConfig(deps: GatewayDeps): Response {
     submitQueued: Boolean(deps.submitStaged && deps.config?.submitQueued),
     partnerPullEnabled: Boolean(deps.partner),
     partnerUrl: deps.config?.partnerUrl ?? null,
+    contractAddress: deps.config?.contractAddress ?? null,
+    publicVerifyEnabled: Boolean(deps.chain),
+    receiptsEnabled: Boolean(deps.openingKeyHex),
     loginEnabled: Boolean(deps.auth),
     guestEntry: Boolean(deps.auth?.guestEntry),
     walletNetworkId: deps.auth?.walletNetworkId ?? null,
@@ -197,7 +202,9 @@ async function handleReconcile(request: Request, deps: GatewayDeps): Promise<Res
       error: 'Reconciliation runs on the operator host — run `npm run condition:reconcile`.',
     });
   }
-  return json(200, await deps.reconcile(allowed));
+  const result = await deps.reconcile(allowed);
+  if (result.mismatches > 0 || result.valueMismatches > 0) await recordMismatch(deps.db, viewer, allowed);
+  return json(200, result);
 }
 
 export async function handleApi(request: Request, deps: GatewayDeps): Promise<Response | null> {
@@ -207,10 +214,14 @@ export async function handleApi(request: Request, deps: GatewayDeps): Promise<Re
   const login = await handleAuth(request, deps);
   if (login) return login;
 
+  const pub = await handlePublic(request, deps);
+  if (pub) return pub;
+
   const admin = await handleAdmin(request, deps);
   if (admin) return admin;
 
   if (url.pathname === '/api/decisions') return handleDecisions(request, deps);
+  if (url.pathname === '/api/guide') return handleGuide(request, deps);
 
   if (request.method === 'POST' && url.pathname === '/api/reconcile') {
     return handleReconcile(request, deps);

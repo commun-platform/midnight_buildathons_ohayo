@@ -8,10 +8,9 @@ import type { ReconcileFn, SubmitStagedFn } from './deps.js';
 
 export function reconcileWith(db: SqlDatabase, chain: Pick<ConditionChain, 'readEntries'>): ReconcileFn {
   return async (entryKeys) => {
-    const r = await reconcileSubmissions(db, chain, { entryKeys: [...entryKeys], phased: true });
+    const r = await reconcileSubmissions(db, chain, { entryKeys: [...entryKeys] });
     return {
       confirmed: r.confirmed,
-      localChecked: r.localChecked,
       mismatches: r.mismatches.length,
       valueMismatches: r.valueMismatches.length,
       missing: r.missing.length,
@@ -19,8 +18,13 @@ export function reconcileWith(db: SqlDatabase, chain: Pick<ConditionChain, 'read
   };
 }
 
-export function submitStagedWith(db: SqlDatabase, chain: ConditionChain, salt: Uint8Array): SubmitStagedFn {
-  return (options) => submitStagedFeed(db, chain, salt, options);
+export function submitStagedWith(
+  db: SqlDatabase,
+  chain: ConditionChain,
+  salt: Uint8Array,
+  openingKeyHex?: string,
+): SubmitStagedFn {
+  return (options) => submitStagedFeed(db, chain, salt, { ...options, ...(openingKeyHex ? { openingKeyHex } : {}) });
 }
 
 export function enqueueStagedWith(db: SqlDatabase): SubmitStagedFn {

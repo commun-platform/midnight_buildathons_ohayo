@@ -24,6 +24,7 @@ export interface ChainRunner extends Pick<ConditionChain, 'readEntries'> {
 }
 
 export interface DrainOptions {
+  openingKeyHex?: string;
   now?: Date;
   newId?: () => string;
   batchSize?: number;
@@ -158,6 +159,7 @@ async function settleJob(
   row: JobRow,
   now: Date,
   timeoutMs: number,
+  openingKeyHex: string | undefined,
 ): Promise<DrainResult> {
   let job: RunnerJob;
   try {
@@ -209,7 +211,7 @@ async function settleJob(
     readings.push(reading);
     outcomes.push(job.outcomes[index] as ReadingOutcome);
   });
-  const recorded = await recordOutcomes(db, readings, outcomes);
+  const recorded = await recordOutcomes(db, readings, outcomes, openingKeyHex ? { openingKeyHex } : {});
   let confirmed = 0;
   if (recorded.confirmable.length > 0) {
     try {
@@ -240,7 +242,7 @@ export async function drainQueue(
   const running = await db.first<JobRow>(
     "SELECT id, reading_ids, status, stage, started_at, finished_at, error FROM chain_jobs WHERE status = 'running'",
   );
-  if (running) return settleJob(db, runner, running, now, options.timeoutMs ?? JOB_TIMEOUT_MS);
+  if (running) return settleJob(db, runner, running, now, options.timeoutMs ?? JOB_TIMEOUT_MS, options.openingKeyHex);
 
   const rows = await db.all<QueuedRow>(
     `SELECT ${QUEUED_COLUMNS} FROM condition_readings WHERE status = 'queued' ORDER BY id LIMIT ?`,

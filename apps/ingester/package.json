@@ -12,7 +12,8 @@
     "./sources": "./src/sources.ts",
     "./store": "./src/store.ts",
     "./submit": "./src/submit.ts",
-    "./queue": "./src/queue.ts"
+    "./queue": "./src/queue.ts",
+    "./showcase": "./src/showcase.ts"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json --noEmit",

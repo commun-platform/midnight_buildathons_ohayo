@@ -1,6 +1,6 @@
 import type { SqlDatabase } from '@midnight-demo/db';
 import type { ConditionChain, ReadingOutcome, SkipReason } from '@midnight-demo/ingester-core';
-import { classifyCondition, type ConditionBand } from '@midnight-demo/shared';
+import { classifyCondition, sealOpening, type ConditionBand } from '@midnight-demo/shared';
 
 import { reconcileSubmissions } from './reconcile.js';
 import { loadRoster, submissionInserts, submissionRecord, submittedEntryKeys } from './store.js';
@@ -10,6 +10,12 @@ export interface SubmitQueueOptions {
   ringIds?: readonly string[];
   limit?: number;
   submittedBy?: string;
+  openingKeyHex?: string;
+}
+
+export interface RecordOptions {
+  submittedBy?: string;
+  openingKeyHex?: string;
 }
 
 export interface SubmittedStagedFeed {
@@ -81,7 +87,7 @@ export async function recordOutcomes(
   db: SqlDatabase,
   readings: readonly QueuedReading[],
   outcomes: readonly ReadingOutcome[],
-  submittedBy?: string,
+  options: RecordOptions = {},
 ): Promise<RecordedOutcomes> {
   if (outcomes.length !== readings.length) {
     throw new Error(`the chain returned ${outcomes.length} outcomes for ${readings.length} readings`);
@@ -109,8 +115,21 @@ export async function recordOutcomes(
     const storedBand = recovered ? submission.band : classifyCondition(reading.value);
     const tampered = storedBand !== submission.band;
     if (tampered) result.tampered += 1;
+    const record = submissionRecord(
+      submission,
+      tx,
+      storedBand,
+      new Date().toISOString(),
+      reading.submittedBy ?? options.submittedBy,
+    );
+    if (options.openingKeyHex && !recovered && !tampered) {
+      record.openingCiphertext = await sealOpening(options.openingKeyHex, submission.entryKey, {
+        scoreCenti: submission.scoreCenti,
+        nonceHex: submission.nonceHex,
+      });
+    }
     await db.batch([
-      ...submissionInserts([submissionRecord(submission, tx, storedBand, new Date().toISOString(), reading.submittedBy ?? submittedBy)]),
+      ...submissionInserts([record]),
       {
         sql: "UPDATE condition_readings SET status = 'submitted', skip_reason = NULL, last_error = NULL, queued_tamper = 0 WHERE id = ?",
         parameters: [reading.id],
@@ -141,7 +160,10 @@ export async function submitStagedFeed(
     submittedEntryKeys: await submittedEntryKeys(db),
     salt,
   });
-  const { submitted, skipped, failed, tampered } = await recordOutcomes(db, readings, outcomes, options.submittedBy);
+  const { submitted, skipped, failed, tampered } = await recordOutcomes(db, readings, outcomes, {
+    ...(options.submittedBy ? { submittedBy: options.submittedBy } : {}),
+    ...(options.openingKeyHex ? { openingKeyHex: options.openingKeyHex } : {}),
+  });
   if (submitted.length === 0 || tampered > 0) {
     return { submitted: submitted.length, skipped, failed, tampered, reconcile: null };
   }

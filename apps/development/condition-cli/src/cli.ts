@@ -1,6 +1,7 @@
 import { config as loadEnv } from 'dotenv';
 import path from 'node:path';
 
+import fs from 'node:fs';
 import { openIngesterDb } from '@midnight-demo/ingester/db';
 import { loadAndPlan, summarize } from '@midnight-demo/ingester/pipeline';
 import { reconcileSubmissions, type ReconcileResult } from '@midnight-demo/ingester/reconcile';
@@ -17,6 +18,7 @@ import {
   loadDeployment,
   persistWalletState,
   queryConditionRegistry,
+  readConditionEntries,
   repoRoot,
   resolveNetwork,
   saveDeployment,
@@ -28,11 +30,13 @@ import {
   type NetworkConfig,
   type WalletContext,
 } from '@midnight-demo/midnight-chain';
+import { bytesToHex, hexToBytes, parseDisclosureReceipt } from '@midnight-demo/shared';
+import { conditionScoreCommitment } from '@midnight-demo/shared/commitment';
 
 loadEnv({ path: developmentEnvPath, quiet: true });
 loadEnv({ path: path.join(repoRoot, '.env.local'), quiet: true });
 
-type Command = 'deploy' | 'submit' | 'status' | 'fund' | 'wallet' | 'funding' | 'reconcile';
+type Command = 'deploy' | 'submit' | 'status' | 'fund' | 'wallet' | 'funding' | 'reconcile' | 'verify-receipt';
 
 function flag(name: string): string | undefined {
   const index = process.argv.indexOf(`--${name}`);
@@ -131,7 +135,7 @@ async function runSubmit(network: NetworkConfig): Promise<void> {
 
 function printReconcile(r: ReconcileResult): void {
   process.stdout.write(
-    `  confirmed ${r.confirmed}  local-checked ${r.localChecked}  mismatches ${r.mismatches.length}  ` +
+    `  confirmed ${r.confirmed}  mismatches ${r.mismatches.length}  ` +
       `value-mismatches ${r.valueMismatches.length}  missing ${r.missing.length}\n`,
   );
   for (const m of r.mismatches) {
@@ -159,6 +163,28 @@ async function runStatus(network: NetworkConfig): Promise<void> {
   );
   const status = await queryConditionRegistry(network, contractAddress);
   process.stdout.write(`${JSON.stringify(status, null, 2)}\n`);
+}
+
+async function runVerifyReceipt(network: NetworkConfig): Promise<void> {
+  const file = process.argv[3];
+  if (!file || file.startsWith('--')) throw new Error('usage: cli.ts verify-receipt <receipt.json> [--network preprod]');
+  const receipt = parseDisclosureReceipt(JSON.parse(fs.readFileSync(file, 'utf8')));
+  if (!receipt) throw new Error(`${file} is not a disclosure receipt`);
+  const contractAddress = conditionContractAddress(
+    flag('contract') ?? loadDeployment(network.networkId)?.contractAddress,
+  );
+  const entry = (await readConditionEntries(network, contractAddress, [receipt.entryKey])).get(receipt.entryKey);
+  if (!entry) throw new Error(`the chain has no entry ${receipt.entryKey}`);
+  const computed = bytesToHex(conditionScoreCommitment(receipt.scoreCenti, hexToBytes(receipt.nonceHex)));
+  const matches = computed === entry.scoreCommitmentHex;
+  process.stdout.write(
+    matches
+      ? `match: ${(receipt.scoreCenti / 100).toFixed(2)} is the ${entry.band}-band entry of ${receipt.periodDate} (commitment ${computed})
+`
+      : `MISMATCH: persistentCommit(${receipt.scoreCenti}, nonce) = ${computed}, chain has ${entry.scoreCommitmentHex}
+`,
+  );
+  if (!matches) process.exitCode = 2;
 }
 
 async function runFund(network: NetworkConfig): Promise<void> {
@@ -207,12 +233,13 @@ async function main(): Promise<void> {
   if (command === 'submit') return runSubmit(network);
   if (command === 'reconcile') return runReconcile(network);
   if (command === 'status') return runStatus(network);
+  if (command === 'verify-receipt') return runVerifyReceipt(network);
   if (command === 'fund') return runFund(network);
   if (command === 'wallet') return runWallet(network);
   if (command === 'funding') return runFunding(network);
 
   process.stdout.write(
-    'Usage: cli.ts <deploy|submit|reconcile|status|fund|wallet|funding> [--network local] [--contract <addr>] [--dry-run]\n',
+    'Usage: cli.ts <deploy|submit|reconcile|status|verify-receipt|fund|wallet|funding> [--network local] [--contract <addr>] [--dry-run]\n',
   );
 }
 

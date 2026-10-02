@@ -14,6 +14,7 @@ export interface Env extends WorkerVars {
   PROOF_SERVER: DurableObjectNamespace<ProofServerContainer>;
   PARTNER?: FetcherLike;
   AUTH_RATE_LIMITER?: RateLimiter;
+  PUBLIC_RATE_LIMITER?: RateLimiter;
   OPERATING_WALLET_MNEMONIC?: string;
   DEVELOPMENT_PRIVATE_STATE_PASSWORD?: string;
 }

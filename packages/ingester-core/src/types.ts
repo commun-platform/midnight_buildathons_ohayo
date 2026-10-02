@@ -43,6 +43,7 @@ export interface SubmissionRecord {
   blockHeight?: string;
   submittedAt: string;
   submittedBy?: string;
+  openingCiphertext?: string;
 }
 
 export interface TransactionSummary {

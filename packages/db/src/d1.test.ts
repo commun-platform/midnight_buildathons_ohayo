@@ -53,7 +53,7 @@ function fileClient(): Client {
 test('D1SqlDatabase runs the condition migrations', async () => {
   const db = d1Database(fakeD1(fileClient()));
   assert.equal(db.kind, 'd1');
-  assert.deepEqual(await applyMigrations(db, loadConditionMigrations()), ['0001_condition_schema']);
+  assert.deepEqual(await applyMigrations(db, loadConditionMigrations()), ['0001_condition_schema', '0002_guest_decisions_resettable']);
   assert.deepEqual(await applyMigrations(db, loadConditionMigrations()), []);
 });
 

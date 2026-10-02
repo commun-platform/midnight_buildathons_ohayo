@@ -15,7 +15,7 @@ Everything below is declared in one [Alchemy](https://alchemy.run) stack,
 
 | Resource | Name | Role |
 |---|---|---|
-| Worker | `midnight-proof-ohayo` | the dashboard (static assets), `/api/*` (the same `handleApi` as the local gateway), the minute Cron that drains the submission queue |
+| Worker | `midnight-proof-ohayo` | the dashboard (static assets), `/api/*` (the same `handleApi` as the local gateway), the minute Cron that drains the submission queue, and a 03:00 JST Cron that clears expired guests |
 | D1 | `ohayo` | roster, readings, submissions, decisions, wallet bindings, guests, `chain_jobs`; `packages/db/migrations` is applied on deploy |
 | Container | `ChainRunnerContainer` (`apps/chain-runner/Dockerfile`, built on deploy) | the operating wallet: plan, prove and submit `condition-registry` transactions; read entries back for verify |
 | Container | `ProofServerContainer` (`midnightntwrk/proof-server:8.1.0`) | proofs, reached only by the chain runner through `proof.internal` |
@@ -161,11 +161,22 @@ to know what to delete — do not remove it while the demo is deployed.
    refreshes every 15 seconds and shows the chain runner's stage.
 3. Within a minute the Cron starts a job. On a cold start allow several minutes; the row
    turns **recorded** with a transaction, and the band appears in the list.
-4. Press verify in the list twice: the first press checks the local record, the second
-   reads the entry back from the chain through the chain runner (phase 7 makes it one
-   press, §9.8).
+4. Press verify in the list: it reads the entry back from the chain through the chain
+   runner (no synced wallet needed).
 
 Log in with Lace as the admin the same way as locally; the wallet network is preprod.
+
+### Seed the showcase (once, before judging)
+
+Log in with Lace as the admin, open **Data admin → Showcase** and press **Seed the
+showcase**. It records the last 7 days of four sample workers (27 readings) as real
+preprod transactions: the Cron runs them as three jobs of up to 10, so allow 30–60
+minutes of container time and check the operating wallet has DUST first
+(`run.sh deploy_preprod wallet`). Pressing it again on a later day adds only the new
+days. Guests then find a history to decide on and look up without waiting for the chain.
+Every night at 03:00 JST the Worker removes the guests whose session has expired
+(their worker, ring, readings, local submission rows, audit rows and decisions); the
+showcase and anything a wallet user did stay, and entries already on chain stay there.
 
 ## Measuring memory (§9.10)
 

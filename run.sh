@@ -53,6 +53,7 @@ PROOF_SERVER_IMAGE=midnightntwrk/proof-server:8.1.0
 PARTNER_DATA_VOLUME=mn-condition-partner-data
 PARTNER_ENV_FILE=.state/partner-mock/dev.env
 GATEWAY_SECRET_FILE=.state/gateway/session-secret
+GATEWAY_OPENING_FILE=.state/gateway/opening-key
 WORKER_VOLUME=mn-condition-worker-node-modules
 WORKER_APP_VOLUME=mn-condition-worker-app-node-modules
 CF_TOOL_IMAGE=mn-condition-cloudflare
@@ -61,6 +62,7 @@ CF_ENV_FILE=.env.cloudflare
 CF_STATE_DIR=.state/cloudflare
 CF_PARTNER_ENV_FILE=.state/cloudflare/partner.env
 CF_SESSION_FILE=.state/cloudflare/session-secret
+CF_OPENING_FILE=.state/cloudflare/opening-key
 CF_SECRETS_FILE=.state/cloudflare/secrets.env
 
 # Compact toolchain 0.31.1 (language 0.23.0) - the version pinned in .compact-version.
@@ -160,8 +162,8 @@ partner_dev_env() {
   echo "generated partner mock dev keys ($PARTNER_ENV_FILE)"
 }
 
-gateway_session_secret() {
-  local file="$ROOT/$GATEWAY_SECRET_FILE"
+secret_file_value() {
+  local file="$ROOT/$1"
   if [ ! -s "$file" ]; then
     mkdir -p "$(dirname "$file")"
     (umask 077; openssl rand -hex 32 > "$file")
@@ -349,21 +351,13 @@ cf_partner_env() {
   echo "generated the hosted partner keys ($CF_PARTNER_ENV_FILE)"
 }
 
-cf_session_secret() {
-  local file="$ROOT/$CF_SESSION_FILE"
-  if [ ! -s "$file" ]; then
-    mkdir -p "$(dirname "$file")"
-    (umask 077; openssl rand -hex 32 > "$file")
-  fi
-  tr -d '[:space:]' < "$file"
-}
-
 cf_secrets_file() {
   cf_partner_env
   (
     umask 077
     {
-      echo "SESSION_SECRET=$(cf_session_secret)"
+      echo "SESSION_SECRET=$(secret_file_value "$CF_SESSION_FILE")"
+      echo "OPENING_KEY=$(secret_file_value "$CF_OPENING_FILE")"
       grep -E '^PARTNER_(API_KEY|PUBLIC_KEY|SIGNING_KEY)=' "$ROOT/$CF_PARTNER_ENV_FILE"
     } > "$ROOT/$CF_SECRETS_FILE"
   )
@@ -752,7 +746,8 @@ lane_dashboard() {
     -e DEVELOPMENT_PRIVATE_STATE_PASSWORD="${DEVELOPMENT_PRIVATE_STATE_PASSWORD:-Aa1!worksite-condition-devnet}" \
     -e PARTNER_URL=http://mn-condition-partner:8788 \
     -e PUBLIC_PARTNER_URL=http://localhost:8788 \
-    -e SESSION_SECRET="$(gateway_session_secret)" \
+    -e SESSION_SECRET="$(secret_file_value "$GATEWAY_SECRET_FILE")" \
+    -e OPENING_KEY="$(secret_file_value "$GATEWAY_OPENING_FILE")" \
     -e GUEST_ENTRY="${GUEST_ENTRY:-1}" \
     -e WALLET_NETWORK_ID="${WALLET_NETWORK_ID:-preprod}" \
     -e PARTNER_API_KEY="$(partner_env_value PARTNER_API_KEY)" \

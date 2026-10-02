@@ -1,6 +1,7 @@
 import type { SqlDatabase } from '@midnight-demo/db';
 import { PartnerPullError, pullPartnerScores } from '@midnight-demo/ingester/partner';
 import { latestChainJob } from '@midnight-demo/ingester/queue';
+import { SHOWCASE_RING_IDS, seedShowcase, showcasePlan } from '@midnight-demo/ingester/showcase';
 import { classifyCondition } from '@midnight-demo/shared';
 
 import { authenticate, type SessionViewer } from './auth.js';
@@ -9,7 +10,7 @@ import { generateInviteCode, inviteHash } from './login.js';
 
 const INVITE_MS = 7 * 24 * 60 * 60 * 1000;
 
-const ADMIN_PATH = /^\/api\/(roster|staged|rings|workers|partner)(\/.*)?$/;
+const ADMIN_PATH = /^\/api\/(roster|staged|rings|workers|partner|showcase)(\/.*)?$/;
 
 function json(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), {
@@ -399,6 +400,42 @@ async function partnerPull(db: SqlDatabase, deps: GatewayDeps): Promise<Response
   }
 }
 
+async function showcaseStatus(db: SqlDatabase): Promise<Record<string, unknown>> {
+  const plan = showcasePlan(new Date());
+  const ringList = SHOWCASE_RING_IDS.map(() => '?').join(', ');
+  const counts = await db.all<{ status: string; n: number }>(
+    `SELECT status, COUNT(*) AS n FROM condition_readings WHERE ring_id IN (${ringList}) GROUP BY status`,
+    [...SHOWCASE_RING_IDS],
+  );
+  const submitted = await count(db, `SELECT COUNT(*) AS n FROM submissions WHERE ring_id IN (${ringList})`, [
+    ...SHOWCASE_RING_IDS,
+  ]);
+  return {
+    workers: SHOWCASE_RING_IDS.length,
+    planned: plan.readings.length,
+    next: { from: plan.from, to: plan.to },
+    readings: Object.fromEntries(counts.map((c) => [c.status, Number(c.n)])),
+    submitted,
+  };
+}
+
+async function showcase(db: SqlDatabase, deps: GatewayDeps, viewer: SessionViewer, method: string): Promise<Response> {
+  if (method === 'GET') return json(200, await showcaseStatus(db));
+  if (method !== 'POST') return json(405, { error: 'Method not allowed' });
+  if (viewer.guestId) return json(403, { error: 'The guest sandbox cannot seed the showcase', code: 'sandbox' });
+  const seeded = await seedShowcase(db);
+  await db.execute(
+    `INSERT INTO audit_log (id, actor_user_id, action, target_table, target_id, after_json, ts)
+     VALUES (?, ?, 'showcase.seed', 'condition_readings', ?, ?, ?)`,
+    [`al-${crypto.randomUUID()}`, viewer.subject, `${seeded.from}..${seeded.to}`, JSON.stringify(seeded), now()],
+  );
+  const queued =
+    deps.submitStaged && deps.config?.submitQueued
+      ? ((await deps.submitStaged({ ringIds: SHOWCASE_RING_IDS, submittedBy: viewer.subject })).queued ?? 0)
+      : 0;
+  return json(200, { ...seeded, queued, status: await showcaseStatus(db) });
+}
+
 export async function handleAdmin(request: Request, deps: GatewayDeps): Promise<Response | null> {
   const url = new URL(request.url);
   if (!ADMIN_PATH.test(url.pathname)) return null;
@@ -428,6 +465,7 @@ export async function handleAdmin(request: Request, deps: GatewayDeps): Promise<
   if (kind === 'staged') {
     return staged(db, deps, viewer, method, url.pathname.slice('/api/staged'.length), request);
   }
+  if (kind === 'showcase' && !id) return showcase(db, deps, viewer, method);
   if (kind === 'partner' && id === 'pull' && !seg[3]) {
     return method === 'POST' ? partnerPull(db, deps) : json(405, { error: 'Method not allowed' });
   }

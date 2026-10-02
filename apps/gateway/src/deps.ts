@@ -1,13 +1,13 @@
 import type { ConditionReader } from '@midnight-demo/condition-read';
 import type { SqlDatabase } from '@midnight-demo/db';
 import type { PartnerConfig } from '@midnight-demo/ingester/partner';
+import type { ConditionChain } from '@midnight-demo/ingester-core';
 
 import type { AuthConfig } from './auth.js';
 import { hexToBytes } from '@midnight-demo/shared';
 
 export type ReconcileFn = (entryKeys: readonly string[]) => Promise<{
   confirmed: number;
-  localChecked: number;
   mismatches: number;
   valueMismatches: number;
   missing: number;
@@ -33,7 +33,16 @@ export interface GatewayDeps {
   db: SqlDatabase;
   reader: ConditionReader;
   salt: Uint8Array;
-  config?: { network?: string; explorerUrl?: string; partnerUrl?: string; submitQueued?: boolean };
+  config?: {
+    network?: string;
+    explorerUrl?: string;
+    partnerUrl?: string;
+    submitQueued?: boolean;
+    contractAddress?: string;
+  };
+  chain?: Pick<ConditionChain, 'readEntries'>;
+  openCommitment?: (scoreCenti: number, nonceHex: string) => Promise<string>;
+  openingKeyHex?: string;
   reconcile?: ReconcileFn;
   submitStaged?: SubmitStagedFn;
   partner?: PartnerConfig;

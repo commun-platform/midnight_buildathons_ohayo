@@ -4,7 +4,6 @@ import { classifyCondition } from '@midnight-demo/shared';
 
 export interface ReconcileResult {
   confirmed: number;
-  localChecked: number;
   mismatches: Array<{ entryKey: string; dbBand: string; chainBand: string }>;
   valueMismatches: Array<{ entryKey: string; value: number; valueBand: string; chainBand: string }>;
   missing: string[];
@@ -12,7 +11,6 @@ export interface ReconcileResult {
 
 export interface ReconcileOptions {
   entryKeys?: readonly string[];
-  phased?: boolean;
 }
 
 interface ReconcileRow {
@@ -60,28 +58,17 @@ export async function reconcileSubmissions(
   const now = new Date().toISOString();
   const result: ReconcileResult = {
     confirmed: 0,
-    localChecked: 0,
     mismatches: [],
     valueMismatches: [],
     missing: [],
   };
 
-  const localOnly = (row: ReconcileRow) => Boolean(opts.phased) && !row.reconciled_at;
-  const chainKeys = rows.filter((row) => !localOnly(row)).map((row) => row.entry_key);
+  const chainKeys = rows.map((row) => row.entry_key);
   const onChainEntries: Awaited<ReturnType<ConditionChain['readEntries']>> = chainKeys.length
     ? await chain.readEntries(chainKeys)
     : new Map();
 
   for (const row of rows) {
-    if (localOnly(row)) {
-      await db.execute(
-        'UPDATE submissions SET chain_verified_at = ?, reconciled_at = ? WHERE entry_key = ?',
-        [now, now, row.entry_key],
-      );
-      result.localChecked += 1;
-      continue;
-    }
-
     const onChain = onChainEntries.get(row.entry_key);
     if (!onChain) {
       result.missing.push(row.entry_key);

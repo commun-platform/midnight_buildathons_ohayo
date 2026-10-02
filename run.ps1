@@ -66,6 +66,7 @@ $ProofImage     = 'midnightntwrk/proof-server:8.1.0'
 $PartnerDataVolume = 'mn-condition-partner-data'
 $PartnerEnvFile    = '.state/partner-mock/dev.env'
 $GatewaySecretFile = '.state/gateway/session-secret'
+$GatewayOpeningFile = '.state/gateway/opening-key'
 $WorkerVolume      = 'mn-condition-worker-node-modules'
 $WorkerAppVolume   = 'mn-condition-worker-app-node-modules'
 $CfToolImage       = 'mn-condition-cloudflare'
@@ -74,6 +75,7 @@ $CfEnvFile         = '.env.cloudflare'
 $CfStateDir        = '.state/cloudflare'
 $CfPartnerEnvFile  = '.state/cloudflare/partner.env'
 $CfSessionFile     = '.state/cloudflare/session-secret'
+$CfOpeningFile     = '.state/cloudflare/opening-key'
 $CfSecretsFile     = '.state/cloudflare/secrets.env'
 
 $CompactcUrl = 'https://github.com/midnightntwrk/compact/releases/download/compactc-v0.31.1/compactc_v0.31.1_x86_64-unknown-linux-musl.zip'
@@ -411,7 +413,8 @@ exec npm run --silent serve -w @midnight-demo/gateway
     '-e', "DEVELOPMENT_PRIVATE_STATE_PASSWORD=$psp"
     '-e', 'PARTNER_URL=http://mn-condition-partner:8788'
     '-e', 'PUBLIC_PARTNER_URL=http://localhost:8788'
-    '-e', "SESSION_SECRET=$(Gateway-SessionSecret)"
+    '-e', "SESSION_SECRET=$(Secret-FileValue $GatewaySecretFile)"
+    '-e', "OPENING_KEY=$(Secret-FileValue $GatewayOpeningFile)"
     '-e', "GUEST_ENTRY=$(if ($env:GUEST_ENTRY) { $env:GUEST_ENTRY } else { '1' })"
     '-e', "WALLET_NETWORK_ID=$(if ($env:WALLET_NETWORK_ID) { $env:WALLET_NETWORK_ID } else { 'preprod' })"
     '-e', "PARTNER_API_KEY=$(Partner-EnvValue 'PARTNER_API_KEY')"
@@ -452,8 +455,8 @@ function Partner-DevEnv {
   Write-Host "generated partner mock dev keys ($PartnerEnvFile)"
 }
 
-function Gateway-SessionSecret {
-  $file = Join-Path $Root $GatewaySecretFile
+function Secret-FileValue([string]$relative) {
+  $file = Join-Path $Root $relative
   if (-not ((Test-Path $file) -and (Get-Item $file).Length -gt 0)) {
     New-Item -ItemType Directory -Force -Path (Split-Path $file) | Out-Null
     $bytes = New-Object byte[] 32
@@ -631,20 +634,9 @@ function Cf-PartnerEnv {
   Write-Host "generated the hosted partner keys ($CfPartnerEnvFile)"
 }
 
-function Cf-SessionSecret {
-  $file = Join-Path $Root $CfSessionFile
-  if (-not ((Test-Path $file) -and (Get-Item $file).Length -gt 0)) {
-    New-Item -ItemType Directory -Force -Path (Split-Path $file) | Out-Null
-    $bytes = New-Object byte[] 32
-    [Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($bytes)
-    [IO.File]::WriteAllText($file, (-join ($bytes | ForEach-Object { $_.ToString('x2') })))
-  }
-  (Get-Content -Raw $file).Trim()
-}
-
 function Cf-SecretsFile {
   Cf-PartnerEnv
-  $lines = @("SESSION_SECRET=$(Cf-SessionSecret)") +
+  $lines = @("SESSION_SECRET=$(Secret-FileValue $CfSessionFile)", "OPENING_KEY=$(Secret-FileValue $CfOpeningFile)") +
     (Get-Content (Join-Path $Root $CfPartnerEnvFile) | Where-Object { $_ -match '^PARTNER_(API_KEY|PUBLIC_KEY|SIGNING_KEY)=' })
   [IO.File]::WriteAllLines((Join-Path $Root $CfSecretsFile), [string[]]$lines)
 }

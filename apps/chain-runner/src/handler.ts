@@ -6,6 +6,7 @@ import { JobBusyError, type JobRegistry } from './jobs.js';
 export interface RunnerDeps {
   chain: ConditionChain;
   jobs: JobRegistry;
+  commit?: (scoreCenti: number, nonceHex: string) => string;
   beforeJob?: () => Promise<void>;
   afterJob?: () => Promise<void>;
 }
@@ -112,6 +113,25 @@ export async function handleRunner(request: Request, deps: RunnerDeps): Promise<
     if (!isStringArray(body?.entryKeys, MAX_ENTRY_KEYS)) return json(400, { error: 'Expected { entryKeys }' });
     const entries = await deps.chain.readEntries(body.entryKeys);
     return json(200, { entries: Object.fromEntries(entries) });
+  }
+
+  if (pathname === '/open') {
+    if (request.method !== 'POST') return json(405, { error: 'Method not allowed' });
+    if (!deps.commit) return json(501, { error: 'Commitments are not available' });
+    const body = (await readJson(request)) as { scoreCenti?: unknown; nonceHex?: unknown } | null;
+    const scoreCenti = body?.scoreCenti;
+    const nonceHex = body?.nonceHex;
+    if (
+      typeof scoreCenti !== 'number' ||
+      !Number.isInteger(scoreCenti) ||
+      scoreCenti < 0 ||
+      scoreCenti > 10_000 ||
+      typeof nonceHex !== 'string' ||
+      !/^[0-9a-f]{64}$/.test(nonceHex)
+    ) {
+      return json(400, { error: 'Expected { scoreCenti, nonceHex }' });
+    }
+    return json(200, { scoreCommitmentHex: deps.commit(scoreCenti, nonceHex) });
   }
 
   return json(404, { error: 'Not found' });

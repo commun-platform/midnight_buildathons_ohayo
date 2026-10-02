@@ -340,3 +340,47 @@ test('hosted queue mode: submit queues readings, a guest counts its queued readi
   );
   assert.ok(listed.rows.every((r: { status: string }) => r.status === 'queued'));
 });
+
+test('the guide ticks each golden-path step from what the guest has done', async () => {
+  const { call, db, deps } = await setup({ guestEntry: true });
+  deps.reconcile = async (keys) => ({ confirmed: 0, mismatches: keys.length, valueMismatches: 0, missing: 0 });
+  const guest = (await call('POST', '/api/auth/guest', {})).body;
+  const subject = `guest:${guest.workerId.slice('guest-'.length)}`;
+  const ring = `ring-${guest.workerId}`;
+  const done = async (session: string) =>
+    Object.fromEntries(((await call('GET', '/api/guide', undefined, session)).body.steps as Array<{ key: string; done: boolean }>).map((s) => [s.key, s.done]));
+
+  assert.deepEqual(await done(guest.session), {
+    measure: false, submit: false, decide: false, public_verify: false, tamper: false,
+  });
+  assert.equal((await call('GET', '/api/guide')).status, 401);
+
+  await db.execute(
+    `INSERT INTO condition_readings (ring_id, recorded_at, value, source, status, created_at)
+     VALUES (?, '2026-10-02T08:00:00Z', 30, 'partner_api', 'pending', '2026-10-02T08:00:00Z')`,
+    [ring],
+  );
+  assert.equal((await done(guest.session)).measure, true);
+
+  const admin = (await call('POST', '/api/auth/guest/persona', { role: 'admin' }, guest.session)).body;
+  await db.execute(
+    `INSERT INTO work_decisions (id, worker_id, period_start_ms, decision, reason, decided_by, decided_at)
+     VALUES ('d-1', ?, 1, 'rested', 'danger band', ?, '2026-10-02T09:00:00Z')`,
+    [guest.workerId, subject],
+  );
+  await db.execute(
+    `INSERT INTO submissions (entry_key, ring_id, period_start_ms, timezone, recorded_at_ms, band,
+       score_commitment_hex, submitted_at, submitted_by, chain_verified_at)
+     VALUES ('77', ?, 1, 'Asia/Tokyo', 1, 'danger', 'aa', '2026-10-02T09:00:00Z', ?, '2026-10-02T09:01:00Z')`,
+    [ring, subject],
+  );
+  await db.execute(
+    `INSERT INTO audit_log (id, actor_user_id, action, target_table, target_id, ts)
+     VALUES ('a-1', ?, 'disclosure.issue', 'submissions', '77', '2026-10-02T09:02:00Z')`,
+    [subject],
+  );
+  assert.equal((await call('POST', '/api/reconcile', { entryKeys: ['77'] }, admin.session)).status, 200);
+  assert.deepEqual(await done(admin.session), {
+    measure: true, submit: true, decide: true, public_verify: true, tamper: true,
+  });
+});

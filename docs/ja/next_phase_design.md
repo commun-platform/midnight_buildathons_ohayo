@@ -733,6 +733,57 @@ Cloudflare Containers の公開料金（2026-09-30 確認、
 1 行の価値、動画、「ゲストで試す」付きのホスト版 URL、核心の 3 点、§9.2 の評価経路から始める。
 約 3 分の動画は §9.3 の流れに沿って作る。
 
+### 9.12 フェーズ 7 での実装
+
+- **照合は 1 回押すだけ**（§9.8）: `reconcileSubmissions` は常にチェーンを読む。`phased` と
+  `localChecked` は廃止した。不一致は `audit_log` に `reconcile.mismatch` を書く（ガイドの改ざんの手順で使う）。
+- **公開検証**（§9.5）: `apps/gateway/src/public.ts`。`GET /api/public/entry?entryKey=` または `?tx=`
+  （tx のハッシュか ID を `submissions` で entryKey に変換）は、`GatewayDeps.chain`（Node ではプロセス内の
+  `ConditionChain`、ホスティング時はチェーン操作用コンテナの `/read`）でエントリを読み、バンド、日付、
+  `recordedAt`、コミットメント、分かれば tx、コントラクト、`notOnLedger: [workerName, ringId, value]` を返す。
+  ホスティング時は `/api/public/*` をクライアント IP ごとに 1 分 30 回に制限する（`PUBLIC_RATE_LIMITER`）。
+  画面の `#/verify` はログイン不要で、各エントリとナビゲーションからリンクする。
+- **開示材料とレシート**（§9.6）: `recordOutcomes` は `{ scoreCenti, nonceHex }` を `OPENING_KEY` の AES-256-GCM で
+  封をし、entryKey を関連データとして結び付けて（`packages/shared/src/opening.ts`）`submissions.opening_ciphertext`
+  に保存する。保存するのは本当に送信したものだけで、改ざんした行やチェーンから回復した行には保存しない
+  （nonce がチェーンと一致しないため）。`OPENING_KEY` は `.state/gateway/opening-key`（ローカル）と
+  `.state/cloudflare/opening-key`（ホスティング）に一度だけ生成する。失うと開示材料も失われる。
+  `POST /api/disclosures { entryKey }`（そのエントリの作業員本人だけ。以前のエントリは 409 `no_opening`）は
+  レシートを返し、`audit_log` に `disclosure.issue` を書く。作業員の履歴には、コピーとダウンロードができる
+  「レシート」ボタンがある。`POST /api/public/receipt` は `persistentCommit` を計算し直し（Node ではプロセス内の
+  `@midnight-demo/shared/commitment`、ホスティング時はチェーン操作用コンテナに追加した `POST /open`）、
+  チェーン上のコミットメントと比べる。`npm run condition:verify-receipt -- receipt.json` は、どのサーバーも
+  信用せずにレシートをチェーンと照らし合わせる。
+- **ガイド**（§9.9）: `GET /api/guide`（`apps/gateway/src/guide.ts`）は、計測（ゲストのリングに値がある）、
+  送信（取得したうえで、そのセッションのチェーンで照合済みの送信がある）、判断（そのセッションの就業判断がある）、
+  公開検証（そのセッションがレシートを発行した。公開のエンドポイントにはセッションがないため）、改ざん
+  （不一致が記録された）でチェックを付ける。パネルはどのページの上にも出て、ゲストには最初から開き、
+  開閉の状態は `localStorage` に残す。ソースとテストへのリンクは入れず、`/verify` へのリンクだけ置く。
+  判断には記録済みのエントリが要り、ショーケースを投入するまではゲスト自身のエントリしかないため、ガイドでは
+  送信を判断の前に置いた（§9.3 ではショーケースの履歴を使って判断を 2 番目にしていた）。ショーケースがあれば、
+  ゲストは一覧で見本の過去の日について待たずに判断できる。レシートの画面の「公開検証で確かめる」は、レシートを
+  メモリ経由で `/verify` に渡してすぐに確かめる（値が載るので URL には入れない）。
+- **ショーケース**（§9.7）: `apps/ingester/src/showcase.ts`（Worker で動く）。見本の作業員 4 人
+  （`showcase-a` 〜 `showcase-d`、リング `ring-showcase-*`）× 今日より前の **7** 日（コンテナの稼働時間を半分に
+  するため 14 日ではない。計測値 27 件、1 日欠測、全バンドを含み、危険の 2 日に判断を投入する — `rested` が 1 件、
+  理由付きの `worked` が 1 件、`decided_by` は `showcase`）。値は日付（曜日の枠）で決まるので、後日もう一度投入しても
+  新しい日が増えるだけで、チェーンにある日と食い違わない。`external_id` の `showcase:<ring>:<date>` で冪等にする。
+  計測値の出所は `partner_api` なので、管理者のキューにはバンドしか出ない。CLI はない: ウォレットの管理者
+  （ゲストのサンドボックスは不可）がデータ管理で **ショーケースを投入** を押す。`POST /api/showcase` は D1 に投入し、
+  `audit_log` に `showcase.seed` を書き、ホスティング時はチェーン操作用コンテナのキューに入れる（最大 10 件のジョブ
+  3 回）。`GET /api/showcase` が進み具合を返す。ローカルの `gateway serve` では、いつもの送信を待つキューに入る。
+  ショーケースが見えるよう、一覧の既定の範囲を 14 日前からにした。
+- **毎晩のリセット**（§9.4）: スナップショットへの復元ではない。ゲストはショーケースの行を変えられない
+  （ゲストの管理者が送信・改ざん・削除できるのは自分のリングの値だけ）ので、`resetSandbox` は期限切れのゲストが
+  作ったもの — 作業員、リング、計測値、`submissions` の行、監査の行、判断 — と、期限切れのログインチャレンジを消す。
+  セッションが有効なゲストは残す。ホスティング時は 2 本目の Cron `0 18 * * *`（03:00 JST、
+  `apps/worker/src/schedule.ts`）で、Node のサーバーは `GUEST_ENTRY=1` のとき 1 時間ごとに動かす。マイグレーション
+  `0002_guest_decisions_resettable.sql` で `work_decisions` の削除トリガーを `decided_by` が `guest:%` の行だけ通すように
+  狭めたので、本物の判断は追記のみのまま。残す行が訂正元にしているゲストの判断も残す。チェーンに載ったゲストの
+  エントリは残り、パートナーのモックのデータベースには触れない。
+- **状態の表示**（§9.8）: 別のバナーは作らない。送信キューの画面が、ジョブの実行中にチェーン操作用コンテナの
+  段階を表示している（§8.6）。
+
 ---
 
 ## 10. プライバシー境界の変化
@@ -766,8 +817,8 @@ Cloudflare Containers の公開料金（2026-09-30 確認、
 | 3 | 就業判断（機能 7） | `apps/gateway`、`apps/dashboard/public/app.js`、`0001_condition_schema.sql` | 理由必須のルールと、追記のみの挙動をテスト済み | 完了（2026-09-30）— ローカル devnet の画面でも、理由なしの拒否・記録・訂正を確認 |
 | 4 | preprod へのデプロイと手順書（機能 4） | `docs/deploy_preprod.md`、`docs/ja/deploy_preprod.md`、`run.sh`、`run.ps1` | 手順書だけを見て preprod にデプロイできる | 完了（2026-09-30）— 手順書に書いたレーンでデプロイし、その実行結果を手順書に記録した |
 | 5 | ウォレットログインとゲスト入場（機能 5、8） | `apps/gateway/src/auth.ts`、`apps/dashboard/public/`、テスト | トークンログインを廃止。チャレンジの再利用、期限切れ、鍵の不一致、招待コードの再利用が拒否され、ゲストの制限が効くことをテスト済み | 完了（2026-09-30）— ゲストの流れはローカル devnet の画面で確認。接続仕様の `midnight_signed_message:` 接頭辞に対応したうえで、実物の Lace ウォレットでの管理者ログインにも成功 |
-| 6 | Worker + D1 + Container（機能 6） | `apps/worker/`、`apps/chain-runner/`、`apps/partner-mock/src/worker.ts`、`run.sh cloudflare`（§8.6） | 開発ホストを止めた状態で、workers.dev 上で一連の流れが動く。§9.10 用のメモリを実測済み | 実装とローカルでの確認まで完了（2026-09-30）: 単体テスト、2 つの Worker のバンドル、コンテナイメージのビルド（`run.sh cloudflare check`）。2026-10-02 に `run.sh cloudflare deploy` と `checkpoint` で `https://midnight-proof-ohayo.commun-official.workers.dev` にデプロイ済み（D1 はマイグレーション済み、チェックポイントは R2）。2026-10-03 にゲストの値がリング同期 → 取得 → キュー → チェーン操作用コンテナを経て、チェーンで照合済みの preprod のエントリになった。実測はメモリ約 600 MB で CPU が張り付いたので、チェーン操作用コンテナは 1 vCPU・3 GiB（§8.6）。ホスティングしたサイトで管理者の Lace ログインも確認 |
-| 7 | 評価レイヤー: 公開検証、開示レシート、デモガイド、照合と改ざんの UX、ショーケース投入、審査用プロファイル（機能 9〜12） | `apps/gateway`、`apps/dashboard/public/`、`apps/development/condition-cli` | ゲストが workers.dev 上でゴールデンパスを 5 分で終えられる | 未着手 |
+| 6 | Worker + D1 + Container（機能 6） | `apps/worker/`、`apps/chain-runner/`、`apps/partner-mock/src/worker.ts`、`run.sh cloudflare`（§8.6） | 開発ホストを止めた状態で、workers.dev 上で一連の流れが動く。§9.10 用のメモリを実測済み | 完了（2026-10-03）— 実装とローカルでの確認（2026-09-30）: 単体テスト、2 つの Worker のバンドル、コンテナイメージのビルド（`run.sh cloudflare check`）。2026-10-02 に `run.sh cloudflare deploy` と `checkpoint` で `https://midnight-proof-ohayo.commun-official.workers.dev` にデプロイ済み（D1 はマイグレーション済み、チェックポイントは R2）。2026-10-03 にゲストの値がリング同期 → 取得 → キュー → チェーン操作用コンテナを経て、チェーンで照合済みの preprod のエントリになった。実測はメモリ約 600 MB で CPU が張り付いたので、チェーン操作用コンテナは 1 vCPU・3 GiB（§8.6）。ホスティングしたサイトで管理者の Lace ログインも確認 |
+| 7 | 評価レイヤー: 公開検証、開示レシート、デモガイド、照合と改ざんの UX、ショーケース投入、審査用プロファイル（機能 9〜12） | `apps/gateway`、`apps/dashboard/public/`、`apps/development/condition-cli` | ゲストが workers.dev 上でゴールデンパスを 5 分で終えられる | 進行中 — 照合、公開検証、レシート、ガイド、ショーケースの投入、毎晩のリセットを実装（§9.12）。2026-10-03 に preprod へショーケースを投入（27 件、コンテナの稼働は約 22 分）。その後ゲストとして API で通した所要時間は、コンテナが起動済みの状態で 5 分 32 秒（ショーケースなしでは約 12 分）で、ほぼすべてがチェーンの待ち 2 回 |
 | 8 | 提出用資料と動画（§9.11） | `docs/submission/`、`docs/ja/submission/`、`README.md` | Evidence Matrix のすべての主張が、ソース・テスト・tx のいずれかにたどり着ける | 未着手 |
 
 ---

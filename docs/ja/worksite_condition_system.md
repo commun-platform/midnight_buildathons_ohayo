@@ -295,7 +295,8 @@ work_decisions       (id, worker_id, period_start_ms, entry_key?, band?, decisio
 - `chain_verified_at` はチェーンから読み戻して一致を確認した時刻。
   `reconcileSubmissions` が刻む。ダッシュボードの「⚠ 未照合 / ✓ 照合済み」表示の根拠。
 - `work_decisions` は、管理者がその日に作業員を就業させた理由を記録する
-  （`worked` / `light_duty` / `rested`）。**追記のみ**: トリガーで `UPDATE` と `DELETE` を拒否し、
+  （`worked` / `light_duty` / `rested`）。**追記のみ**: トリガーで `UPDATE` と `DELETE` を拒否し（`DELETE` を通すのは、毎晩のリセットが消す
+  ゲストのサンドボックスの行、`decided_by` が `guest:<id>` の行だけ）、
   訂正は現在の判断を `supersedes_id` で指す新しい行として加える（部分一意インデックスで、
   作業員・日ごとの起点は 1 行、各行の後継も 1 行に限る）。書き込みのたびに `audit_log` にも
   記録する。その日の `band` と `entry_key` はサーバが `submissions` から写し取る。`caution` /
@@ -546,12 +547,9 @@ JSON                    { range, rings: [{ ringId, timezone,
 1. **バンドの照合** — ダッシュボードの「照合」ボタン。`submissions` の band を
    チェーンの `entries` と突き合わせる。改ざんがあればここで露見する。
 
-   照合は **2 段階**（`reconcileSubmissions` の `phased: true`）。`reconciled_at`
-   が NULL の行に対する 1 回目は、チェーンを読まずに保存済みレコードから
-   `chain_verified_at` / `reconciled_at` を刻んで `localChecked` を返すだけ。
-   `reconciled_at` が入った状態で再度呼ぶと `indexerConditionReader` を開いて
-   チェーンに直接照会する。つまり**不一致を検知するには 2 回押す**。
-   1 回目のトーストが「もう一度押すとチェーンに直接照会」と表示するのはこのため。
+   1 回押すとチェーンを読む（`reconcileSubmissions` → `ConditionChain.readEntries`。ホスティング時は
+   チェーン操作用コンテナの `/read` で、ウォレットの同期は要らない）。不一致があれば報告し、ローカルの行を
+   チェーンの値に直し、照合済みを取り消す。
 2. **生値の開示検証** — salt と `scoreCenti` / `nonce` の開示を受け、
    `persistentCommit(scoreCenti, nonce) == scoreCommitment` を自分で計算し、
    さらに `entryKey == sha256(ringId || periodStartMs || salt)[0..31]` を確認する。

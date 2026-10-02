@@ -186,6 +186,7 @@ test('handleApi: /api/config is unauthenticated display strings', async () => {
     network: 'Midnight Local',
     explorerUrl: 'https://explorer.example',
     submitEnabled: false,
+    submitQueued: false,
     partnerPullEnabled: false,
     partnerUrl: null,
     loginEnabled: true,

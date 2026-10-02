@@ -27,6 +27,10 @@
       deploy_preprod [wallet|funding|deploy|status]
                      deploy condition-registry to Midnight preprod with the wallet
                      in .env.preprod (no step = funding -> deploy -> status)
+      cloudflare [check|plan|deploy|checkpoint|status|tail|destroy|all]
+                     host the demo on workers.dev (Worker + D1 + R2 + Containers),
+                     declared in apps/worker/alchemy.run.ts (Alchemy); credentials
+                     in .env.cloudflare; `check` needs none; `destroy` removes it all
       down / clean   stop containers / also delete volumes
 
   Aliases (deprecated): sdk->test_sdk, contract->test_contract, integrate->e2e,
@@ -62,6 +66,15 @@ $ProofImage     = 'midnightntwrk/proof-server:8.1.0'
 $PartnerDataVolume = 'mn-condition-partner-data'
 $PartnerEnvFile    = '.state/partner-mock/dev.env'
 $GatewaySecretFile = '.state/gateway/session-secret'
+$WorkerVolume      = 'mn-condition-worker-node-modules'
+$WorkerAppVolume   = 'mn-condition-worker-app-node-modules'
+$CfToolImage       = 'mn-condition-cloudflare'
+$CfStage           = 'demo'
+$CfEnvFile         = '.env.cloudflare'
+$CfStateDir        = '.state/cloudflare'
+$CfPartnerEnvFile  = '.state/cloudflare/partner.env'
+$CfSessionFile     = '.state/cloudflare/session-secret'
+$CfSecretsFile     = '.state/cloudflare/secrets.env'
 
 $CompactcUrl = 'https://github.com/midnightntwrk/compact/releases/download/compactc-v0.31.1/compactc_v0.31.1_x86_64-unknown-linux-musl.zip'
 $CompactcSha = 'e291b4bab4d4e857707008f8b1c25c2b8e0c843f6c737d0ee6c0d9ac69a6bbfb'
@@ -90,8 +103,8 @@ function Import-HarnessEnv {
 }
 Import-HarnessEnv
 
-$OfflineWs = '@midnight-demo/shared @midnight-demo/db @midnight-demo/condition-read @midnight-demo/ingester-core @midnight-demo/ingester @midnight-demo/gateway @midnight-demo/partner-mock'
-$Install   = '[ -d node_modules/tsx ] || npm ci --workspace @midnight-demo/shared --workspace @midnight-demo/db --workspace @midnight-demo/condition-read --workspace @midnight-demo/ingester-core --workspace @midnight-demo/ingester --workspace @midnight-demo/gateway --workspace @midnight-demo/partner-mock --include-workspace-root=true --no-audit --no-fund'
+$OfflineWs = '@midnight-demo/shared @midnight-demo/db @midnight-demo/condition-read @midnight-demo/ingester-core @midnight-demo/ingester @midnight-demo/gateway @midnight-demo/partner-mock @midnight-demo/worker'
+$Install   = '[ -d node_modules/wrangler ] || npm ci --workspace @midnight-demo/shared --workspace @midnight-demo/db --workspace @midnight-demo/condition-read --workspace @midnight-demo/ingester-core --workspace @midnight-demo/ingester --workspace @midnight-demo/gateway --workspace @midnight-demo/partner-mock --workspace @midnight-demo/worker --include-workspace-root=true --no-audit --no-fund'
 $Salt      = if ($env:INGESTER_SALT_HEX) { $env:INGESTER_SALT_HEX } else { '5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a' }
 
 $Mounts = @(
@@ -104,6 +117,7 @@ $Mounts = @(
   '-v', '/app/apps/ingester/node_modules'
   '-v', '/app/apps/gateway/node_modules'
   '-v', '/app/apps/partner-mock/node_modules'
+  '-v', '/app/apps/worker/node_modules'
 )
 
 # ---------------------------------------------------------------------------
@@ -152,7 +166,7 @@ function Lane-Down([string]$which) {
   & docker compose -f $Compose down 2>$null | Out-Null
   Write-Host 'removed containers'
   if ($which -eq 'clean') {
-    & docker volume rm $Volume $ContractVolume $SdkVolume $ToolchainVol $E2eDbVolume $PartnerDataVolume 2>$null | Out-Null
+    & docker volume rm $Volume $ContractVolume $SdkVolume $ToolchainVol $E2eDbVolume $PartnerDataVolume $WorkerVolume $WorkerAppVolume 2>$null | Out-Null
     Write-Host 'removed volumes (next run reinstalls)'
   }
 }
@@ -188,19 +202,25 @@ function Lane-TestSdk {
     '-v', '/app/apps/ingester/node_modules'
     '-v', '/app/apps/gateway/node_modules'
     '-v', '/app/apps/partner-mock/node_modules'
+    '-v', '/app/apps/chain-runner/node_modules'
+    '-v', '/app/apps/worker/node_modules'
     '-v', '/app/apps/development/condition-cli/node_modules'
     '-e', 'MIDNIGHT_HOST_ROLE=development'
   )
   $script = @'
-[ -d node_modules/@midnight-ntwrk/wallet-sdk ] || npm ci --workspace @midnight-demo/shared --workspace @midnight-demo/db --workspace @midnight-demo/condition-read --workspace @midnight-demo/ingester-core --workspace @midnight-demo/ingester --workspace @midnight-demo/condition-registry-contract --workspace @midnight-demo/midnight-chain --workspace @midnight-demo/condition-cli --workspace @midnight-demo/gateway --workspace @midnight-demo/partner-mock --include-workspace-root=true --no-audit --no-fund
+[ -d node_modules/@midnight-ntwrk/wallet-sdk ] || npm ci --workspace @midnight-demo/shared --workspace @midnight-demo/db --workspace @midnight-demo/condition-read --workspace @midnight-demo/ingester-core --workspace @midnight-demo/ingester --workspace @midnight-demo/condition-registry-contract --workspace @midnight-demo/midnight-chain --workspace @midnight-demo/condition-cli --workspace @midnight-demo/chain-runner --workspace @midnight-demo/gateway --workspace @midnight-demo/partner-mock --include-workspace-root=true --no-audit --no-fund
 echo '== typecheck: @midnight-demo/midnight-chain =='
 npm run typecheck -w @midnight-demo/midnight-chain
 echo '== typecheck: @midnight-demo/condition-cli =='
 npm run typecheck -w @midnight-demo/condition-cli
 echo '== test: @midnight-demo/midnight-chain =='
 npm run test -w @midnight-demo/midnight-chain
+echo '== typecheck: @midnight-demo/chain-runner =='
+npm run typecheck -w @midnight-demo/chain-runner
 echo '== test: @midnight-demo/condition-cli =='
 npm run test -w @midnight-demo/condition-cli
+echo '== test: @midnight-demo/chain-runner =='
+npm run test -w @midnight-demo/chain-runner
 echo 'SDK OK'
 '@
   Invoke-Bash -DockerArgs $d -Script $script -Strict
@@ -292,6 +312,8 @@ function Lane-Integrate {
     '-v', '/app/apps/ingester/node_modules'
     '-v', '/app/apps/gateway/node_modules'
     '-v', '/app/apps/partner-mock/node_modules'
+    '-v', '/app/apps/chain-runner/node_modules'
+    '-v', '/app/apps/worker/node_modules'
     '-v', '/app/apps/development/condition-cli/node_modules'
     '-v', "${E2eDbVolume}:/e2e"
     '-e', "RESUME=$($env:RESUME)"
@@ -304,7 +326,7 @@ function Lane-Integrate {
     '-e', 'LIBSQL_URL=file:/e2e/ingester.db'
   )
   $script = @"
-[ -d node_modules/@midnight-ntwrk/wallet-sdk ] || npm ci --workspace @midnight-demo/shared --workspace @midnight-demo/db --workspace @midnight-demo/condition-read --workspace @midnight-demo/ingester-core --workspace @midnight-demo/ingester --workspace @midnight-demo/condition-registry-contract --workspace @midnight-demo/midnight-chain --workspace @midnight-demo/condition-cli --workspace @midnight-demo/gateway --workspace @midnight-demo/partner-mock --include-workspace-root=true --no-audit --no-fund
+[ -d node_modules/@midnight-ntwrk/wallet-sdk ] || npm ci --workspace @midnight-demo/shared --workspace @midnight-demo/db --workspace @midnight-demo/condition-read --workspace @midnight-demo/ingester-core --workspace @midnight-demo/ingester --workspace @midnight-demo/condition-registry-contract --workspace @midnight-demo/midnight-chain --workspace @midnight-demo/condition-cli --workspace @midnight-demo/chain-runner --workspace @midnight-demo/gateway --workspace @midnight-demo/partner-mock --include-workspace-root=true --no-audit --no-fund
 
 $(Compactc-Fetch)
 if [ ! -f contracts/condition-registry/src/managed/condition-registry/contract/index.js ]; then
@@ -362,7 +384,7 @@ function Lane-Dashboard {
   $psp    = if ($env:DEVELOPMENT_PRIVATE_STATE_PASSWORD) { $env:DEVELOPMENT_PRIVATE_STATE_PASSWORD } else { 'Aa1!worksite-condition-devnet' }
 
   $script = @"
-[ -d node_modules/@midnight-ntwrk/wallet-sdk ] || npm ci --workspace @midnight-demo/shared --workspace @midnight-demo/db --workspace @midnight-demo/condition-read --workspace @midnight-demo/ingester-core --workspace @midnight-demo/ingester --workspace @midnight-demo/condition-registry-contract --workspace @midnight-demo/midnight-chain --workspace @midnight-demo/condition-cli --workspace @midnight-demo/gateway --workspace @midnight-demo/partner-mock --include-workspace-root=true --no-audit --no-fund
+[ -d node_modules/@midnight-ntwrk/wallet-sdk ] || npm ci --workspace @midnight-demo/shared --workspace @midnight-demo/db --workspace @midnight-demo/condition-read --workspace @midnight-demo/ingester-core --workspace @midnight-demo/ingester --workspace @midnight-demo/condition-registry-contract --workspace @midnight-demo/midnight-chain --workspace @midnight-demo/condition-cli --workspace @midnight-demo/chain-runner --workspace @midnight-demo/gateway --workspace @midnight-demo/partner-mock --include-workspace-root=true --no-audit --no-fund
 exec npm run --silent serve -w @midnight-demo/gateway
 "@
 
@@ -378,6 +400,8 @@ exec npm run --silent serve -w @midnight-demo/gateway
     '-v', '/app/apps/ingester/node_modules'
     '-v', '/app/apps/gateway/node_modules'
     '-v', '/app/apps/partner-mock/node_modules'
+    '-v', '/app/apps/chain-runner/node_modules'
+    '-v', '/app/apps/worker/node_modules'
     '-v', '/app/apps/development/condition-cli/node_modules'
   ) + $dashDb + $dashChain + @(
     '-e', 'MIDNIGHT_HOST_ROLE=development'
@@ -507,6 +531,8 @@ function Lane-DeployPreprod([string]$step) {
     '-v', '/app/apps/ingester/node_modules'
     '-v', '/app/apps/gateway/node_modules'
     '-v', '/app/apps/partner-mock/node_modules'
+    '-v', '/app/apps/chain-runner/node_modules'
+    '-v', '/app/apps/worker/node_modules'
     '-v', '/app/apps/development/condition-cli/node_modules'
     '-e', 'MIDNIGHT_HOST_ROLE=development'
     '-e', "DEVELOPMENT_ENV_FILE=$PreprodEnvFile"
@@ -515,7 +541,7 @@ function Lane-DeployPreprod([string]$step) {
     '-e', "STEP=$step"
   )
   $script = @"
-[ -d node_modules/@midnight-ntwrk/wallet-sdk ] || npm ci --workspace @midnight-demo/shared --workspace @midnight-demo/db --workspace @midnight-demo/condition-read --workspace @midnight-demo/ingester-core --workspace @midnight-demo/ingester --workspace @midnight-demo/condition-registry-contract --workspace @midnight-demo/midnight-chain --workspace @midnight-demo/condition-cli --workspace @midnight-demo/gateway --workspace @midnight-demo/partner-mock --include-workspace-root=true --no-audit --no-fund
+[ -d node_modules/@midnight-ntwrk/wallet-sdk ] || npm ci --workspace @midnight-demo/shared --workspace @midnight-demo/db --workspace @midnight-demo/condition-read --workspace @midnight-demo/ingester-core --workspace @midnight-demo/ingester --workspace @midnight-demo/condition-registry-contract --workspace @midnight-demo/midnight-chain --workspace @midnight-demo/condition-cli --workspace @midnight-demo/chain-runner --workspace @midnight-demo/gateway --workspace @midnight-demo/partner-mock --include-workspace-root=true --no-audit --no-fund
 
 cli() {
   npx tsx apps/development/condition-cli/src/cli.ts "`$@" 2>&1 \
@@ -542,6 +568,176 @@ echo 'PREPROD OK'
   Invoke-Bash -DockerArgs $d -Script $script -Strict
 }
 
+function Env-FileValue([string]$file, [string]$name) {
+  $path = Join-Path $Root $file
+  if (-not (Test-Path $path)) { return '' }
+  $line = Get-Content $path | Where-Object { $_ -like "$name=*" } | Select-Object -First 1
+  if ($line) { $line.Substring($name.Length + 1).Trim() } else { '' }
+}
+
+$WorkerMounts = @(
+  '-v', "${Root}:/app"
+  '-v', "${WorkerVolume}:/app/node_modules"
+  '-v', "${WorkerAppVolume}:/app/apps/worker/node_modules"
+  '-v', '/app/packages/shared/node_modules'
+  '-v', '/app/packages/db/node_modules'
+  '-v', '/app/packages/ingester-core/node_modules'
+  '-v', '/app/packages/condition-read/node_modules'
+  '-v', '/app/apps/ingester/node_modules'
+  '-v', '/app/apps/gateway/node_modules'
+  '-v', '/app/apps/partner-mock/node_modules'
+)
+$WorkerInstall = '[ -d apps/worker/node_modules/alchemy ] || npm ci --workspace @midnight-demo/worker --workspace @midnight-demo/partner-mock --include-workspace-root=true --no-audit --no-fund'
+$Alchemy = 'node /app/apps/worker/node_modules/alchemy/bin/cli.js'
+$AlchemyArgs = "--config /app/apps/worker/alchemy.run.ts --stage $CfStage"
+
+function Cloudflare-Image {
+  & docker image inspect $CfToolImage 2>$null | Out-Null
+  if ($LASTEXITCODE -eq 0) { return }
+  Write-Host "building $CfToolImage (node + docker CLI for the container image builds)"
+  & docker build -q -t $CfToolImage -f (Join-Path $Root 'ops\cloudflare\tools.Dockerfile') (Join-Path $Root 'ops\cloudflare') | Out-Null
+  if ($LASTEXITCODE -ne 0) { Fail "could not build $CfToolImage" }
+}
+
+# The script travels base64 in an environment variable so an interactive
+# prompt inside the container still reads the console.
+function Invoke-Cloudflare([string] $Script) {
+  $b64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes("set -euo pipefail`n$WorkerInstall`n$Script"))
+  $envArgs = @()
+  foreach ($file in $PreprodEnvFile, $CfEnvFile, $CfSecretsFile) {
+    $path = Join-Path $Root $file
+    if (Test-Path $path) { $envArgs += @('--env-file', $path) }
+  }
+  New-Item -ItemType Directory -Force -Path (Join-Path $Root $CfStateDir) | Out-Null
+  $dArgs = @('run', '--rm', '-w', '/app') + $WorkerMounts + @(
+    '-v', '/var/run/docker.sock:/var/run/docker.sock'
+  ) + $envArgs + @(
+    '-e', 'CI=true', '-e', 'WRANGLER_SEND_METRICS=false', '-e', "SCRIPT_B64=$b64",
+    $CfToolImage, 'bash', '-c', 'echo $SCRIPT_B64 | base64 -d > /tmp/lane.sh && bash /tmp/lane.sh'
+  )
+  & docker @dArgs
+}
+
+function Cf-PartnerEnv {
+  $file = Join-Path $Root $CfPartnerEnvFile
+  if ((Test-Path $file) -and (Get-Item $file).Length -gt 0) { return }
+  New-Item -ItemType Directory -Force -Path (Split-Path $file) | Out-Null
+  $dArgs = @('run', '--rm', '-w', '/app') + $WorkerMounts + @(
+    $CfToolImage, 'bash', '-c', "$WorkerInstall >/dev/null; npx --no-install tsx apps/partner-mock/src/cli.ts keygen"
+  )
+  $lines = & docker @dArgs
+  if ($LASTEXITCODE -ne 0) { Fail 'partner keygen failed' }
+  [IO.File]::WriteAllLines($file, [string[]]($lines | Where-Object { $_ -like 'PARTNER_*=*' }))
+  Write-Host "generated the hosted partner keys ($CfPartnerEnvFile)"
+}
+
+function Cf-SessionSecret {
+  $file = Join-Path $Root $CfSessionFile
+  if (-not ((Test-Path $file) -and (Get-Item $file).Length -gt 0)) {
+    New-Item -ItemType Directory -Force -Path (Split-Path $file) | Out-Null
+    $bytes = New-Object byte[] 32
+    [Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($bytes)
+    [IO.File]::WriteAllText($file, (-join ($bytes | ForEach-Object { $_.ToString('x2') })))
+  }
+  (Get-Content -Raw $file).Trim()
+}
+
+function Cf-SecretsFile {
+  Cf-PartnerEnv
+  $lines = @("SESSION_SECRET=$(Cf-SessionSecret)") +
+    (Get-Content (Join-Path $Root $CfPartnerEnvFile) | Where-Object { $_ -match '^PARTNER_(API_KEY|PUBLIC_KEY|SIGNING_KEY)=' })
+  [IO.File]::WriteAllLines((Join-Path $Root $CfSecretsFile), [string[]]$lines)
+}
+
+function Cf-Require {
+  if (-not (Test-Path (Join-Path $Root $CfEnvFile))) { Fail "$CfEnvFile is missing - see docs/deploy_cloudflare.md" }
+  foreach ($key in 'CLOUDFLARE_API_TOKEN', 'CLOUDFLARE_ACCOUNT_ID', 'WORKERS_SUBDOMAIN', 'ADMIN_WALLET_KEY_HASHES') {
+    if (-not (Env-FileValue $CfEnvFile $key)) { Fail "$key is empty in $CfEnvFile" }
+  }
+  foreach ($key in 'DEVELOPMENT_WALLET_MNEMONIC', 'DEVELOPMENT_PRIVATE_STATE_PASSWORD', 'INGESTER_SALT_HEX', 'CONDITION_REGISTRY_CONTRACT_ADDRESS') {
+    if (-not (Env-FileValue $PreprodEnvFile $key)) {
+      Fail "$key is empty in $PreprodEnvFile - the hosted demo uses the preprod wallet, salt and contract"
+    }
+  }
+}
+
+function Cf-Checkpoint {
+  New-Item -ItemType Directory -Force -Path (Join-Path $Root $CfStateDir) | Out-Null
+  $d = @(
+    'run', '--rm', '-w', '/app'
+    '-v', "${Root}:/app"
+    '-v', "${SdkVolume}:/app/node_modules"
+    '-v', '/app/packages/shared/node_modules'
+    '-v', '/app/packages/condition-read/node_modules'
+    '-v', '/app/packages/ingester-core/node_modules'
+    '-v', '/app/packages/midnight-chain/node_modules'
+    '-v', '/app/contracts/condition-registry/node_modules'
+    '-v', '/app/apps/chain-runner/node_modules'
+    '-e', 'MIDNIGHT_HOST_ROLE=development'
+    '-e', "DEVELOPMENT_ENV_FILE=$PreprodEnvFile"
+    '-e', 'MIDNIGHT_NETWORK=preprod'
+    $Image, 'npx', '--no-install', 'tsx', 'apps/chain-runner/src/cli.ts', 'export', '--out', "$CfStateDir/checkpoint.enc"
+  )
+  & docker @d
+  if ($LASTEXITCODE -ne 0) { Fail 'sealing the wallet checkpoint failed' }
+  Invoke-Cloudflare "npx wrangler r2 object put ohayo-wallet-state/ohayo-wallet/preprod/checkpoint.enc --file /app/$CfStateDir/checkpoint.enc --content-type application/octet-stream --remote"
+}
+
+function Cf-Status {
+  $sub = Env-FileValue $CfEnvFile 'WORKERS_SUBDOMAIN'
+  try { Invoke-RestMethod "https://midnight-proof-ohayo.$sub.workers.dev/api/config" | ConvertTo-Json } catch { Write-Host $_.Exception.Message }
+  Invoke-Cloudflare 'npx wrangler containers list || true'
+}
+
+function Cf-Destroy {
+  Write-Host 'This deletes the midnight-proof-ohayo and midnight-proof-ohayo-partner Workers, their D1 databases (all data),'
+  Write-Host 'the R2 bucket with the wallet checkpoint, both container applications and their images.'
+  Write-Host 'The contract and its entries on Midnight preprod stay. Local files are kept.'
+  $answer = Read-Host "Type 'ohayo' to destroy the hosted demo"
+  if ($answer -ne 'ohayo') { Fail 'aborted' }
+  Invoke-Cloudflare @"
+cd /app/$CfStateDir
+$Alchemy destroy $AlchemyArgs --yes
+cd /app
+images=`$( (npx wrangler containers images list --json 2>/dev/null || echo '[]') | jq -r '.[] | select(.name | test("^ohayo-(chainrunner|proofserver)-$CfStage-")) | .name + ":" + .tags[]' || true)
+for image in `$images; do
+  npx wrangler containers images delete "`$image" --skip-confirmation || true
+done
+echo 'CLOUDFLARE DESTROYED'
+"@
+}
+
+function Lane-Cloudflare([string]$step) {
+  if (-not $step) { $step = 'check' }
+  if ($step -notin 'check', 'plan', 'deploy', 'checkpoint', 'status', 'tail', 'destroy', 'all') {
+    [Console]::Error.WriteLine("unknown cloudflare step: $step (check | plan | deploy | checkpoint | status | tail | destroy | all)")
+    exit 2
+  }
+  Cloudflare-Image
+  if ($step -eq 'check') {
+    Invoke-Cloudflare @'
+npm run typecheck -w @midnight-demo/worker
+npm run typecheck:stack -w @midnight-demo/worker
+npm run test -w @midnight-demo/worker
+docker build -q -f apps/chain-runner/Dockerfile -t ohayo-chain-runner:check . >/dev/null
+docker image rm ohayo-chain-runner:check >/dev/null
+echo 'CLOUDFLARE CHECK OK'
+'@
+    return
+  }
+  Cf-Require
+  $deploy = "cd /app/$CfStateDir && $Alchemy deploy $AlchemyArgs --yes"
+  switch ($step) {
+    'plan'       { Cf-SecretsFile; Invoke-Cloudflare "cd /app/$CfStateDir && $Alchemy plan $AlchemyArgs" }
+    'deploy'     { Cf-SecretsFile; Invoke-Cloudflare $deploy }
+    'checkpoint' { Cf-Checkpoint }
+    'status'     { Cf-Status }
+    'tail'       { Invoke-Cloudflare 'npx wrangler tail midnight-proof-ohayo --format pretty' }
+    'destroy'    { Cf-SecretsFile; Cf-Destroy }
+    'all'        { Cf-SecretsFile; Invoke-Cloudflare $deploy; Cf-Checkpoint; Cf-Status }
+  }
+}
+
 function Lane-E2E {
   if (-not (Devnet-Running)) { Start-Devnet }
   Lane-Integrate
@@ -555,6 +751,7 @@ run.ps1 <lane>   (or set $env:MODE_ENV)
   test  test_sdk  test_contract  test_all
   db  devnet  e2e  down  clean
   deploy_preprod [wallet|funding|deploy|status]
+  cloudflare [check|plan|deploy|checkpoint|status|tail|destroy|all]
 '@ | ForEach-Object { [Console]::Error.WriteLine($_) }
 }
 
@@ -586,6 +783,10 @@ switch ($lane) {
   'deploy_preprod' {
     $step = if ($Rest) { $Rest[0] } else { '' }
     Lane-DeployPreprod $step; exit $LASTEXITCODE
+  }
+  'cloudflare' {
+    $step = if ($Rest) { $Rest[0] } else { '' }
+    Lane-Cloudflare $step; exit $LASTEXITCODE
   }
   ''      { [Console]::Error.WriteLine('no lane (pass one, or set $env:MODE_ENV)'); Show-Usage; exit 2 }
   default { [Console]::Error.WriteLine("unknown lane: $lane"); Show-Usage; exit 2 }

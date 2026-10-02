@@ -128,6 +128,7 @@ function handleConfig(deps: GatewayDeps): Response {
     network: deps.config?.network ?? null,
     explorerUrl: deps.config?.explorerUrl ?? null,
     submitEnabled: Boolean(deps.submitStaged),
+    submitQueued: Boolean(deps.submitStaged && deps.config?.submitQueued),
     partnerPullEnabled: Boolean(deps.partner),
     partnerUrl: deps.config?.partnerUrl ?? null,
     loginEnabled: Boolean(deps.auth),

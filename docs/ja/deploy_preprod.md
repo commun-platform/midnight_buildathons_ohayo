@@ -166,12 +166,13 @@ bash ./run.sh deploy_preprod status
 
 ## Cloudflare へのウォレットの引き継ぎ（フェーズ 6）
 
-まだできない。Worker と Container は [`next_phase_design.md`](next_phase_design.md) §11 の
-フェーズ 6。できたら次のようにする。
+[`deploy_cloudflare.md`](deploy_cloudflare.md) に従う。
 
-1. secret を `wrangler secret put` に標準入力で渡して Worker に登録する（画面に出さない）。
-   seed は `OPERATING_WALLET_SEED`、ほかに `INGESTER_SALT_HEX` と
-   `DEVELOPMENT_PRIVATE_STATE_PASSWORD`。コントラクトのアドレスは Worker の vars に入れる。
+1. `./run.sh cloudflare deploy` が `.env.preprod` からニーモニック、`INGESTER_SALT_HEX`、
+   `DEVELOPMENT_PRIVATE_STATE_PASSWORD`、`CONDITION_REGISTRY_CONTRACT_ADDRESS` を Alchemy のスタック
+   （`apps/worker/alchemy.run.ts`）に読み込む。画面に出したり手で入力したりしない。ニーモニックは Worker の
+   シークレット `OPERATING_WALLET_MNEMONIC` になり、受け取るのはチェーン操作用コンテナだけ。続いて
+   `./run.sh cloudflare checkpoint` で、この開発機の同期済みウォレット状態を上げる。
 2. **これ以降、このウォレットは Container だけが使う。** submitter の鍵は seed から作られる
    （`packages/midnight-chain/src/state.ts` の `submitterSecretKeyHex`）ので、2 つのホストが
    同じ DUST を使うと競合する。引き継ぎ後は、開発ホストから `deploy_preprod deploy` や送信を

@@ -21,6 +21,7 @@ export interface SubmitStagedOptions {
 }
 
 export type SubmitStagedFn = (options: SubmitStagedOptions) => Promise<{
+  queued?: number;
   submitted: number;
   skipped: number;
   failed: number;
@@ -32,7 +33,7 @@ export interface GatewayDeps {
   db: SqlDatabase;
   reader: ConditionReader;
   salt: Uint8Array;
-  config?: { network?: string; explorerUrl?: string; partnerUrl?: string };
+  config?: { network?: string; explorerUrl?: string; partnerUrl?: string; submitQueued?: boolean };
   reconcile?: ReconcileFn;
   submitStaged?: SubmitStagedFn;
   partner?: PartnerConfig;

@@ -4,7 +4,7 @@
 
 `apps/partner-mock/` stands in for the partner company's ring → app → server path. It
 owns the 0–100 score: it turns vitals into a score, stores it in **its own** database,
-signs every score it hands out, and never talks to SADAKO's database. SADAKO pulls from
+signs every score it hands out, and never talks to OHAYO!'s database. OHAYO! pulls from
 it (the Data admin screen's **Pull from partner** button, `POST /api/partner/pull`).
 
 The handler is fetch-shaped (`handlePartner(request, deps)` in
@@ -41,7 +41,7 @@ score = 30 · clamp01(sleepHours / 8)
 
 rounded to two decimals. Eight hours of sleep, HRV ≥ 80 ms, heart rate ≤ 55 bpm,
 SpO₂ ≥ 98 % and no temperature deviation give 100. A direct `score` is rounded to two
-decimals too. The formula is illustrative; SADAKO does not depend on it.
+decimals too. The formula is illustrative; OHAYO! does not depend on it.
 
 `POST /v1/simulate` does not use vitals: the score is
 `20 + (first two bytes of SHA-256("ringId|date") mod 8001) / 100`, the id is
@@ -68,22 +68,22 @@ returns the same scores with `created: false`.
 - **Signature.** Ed25519 over the UTF-8 bytes of
 
   ```
-  sadako-partner-score-v1\n{id}\n{ringId}\n{measuredAt}\n{score}
+  ohayo-partner-score-v1\n{id}\n{ringId}\n{measuredAt}\n{score}
   ```
 
   where `{score}` is JavaScript's `String(score)`. `partnerScoreMessage` and
   `verifyPartnerScore` in `packages/shared/src/partner.ts` are the single definition,
-  used by the mock to sign and by SADAKO to verify (WebCrypto, so it runs in Node 22 and
+  used by the mock to sign and by OHAYO! to verify (WebCrypto, so it runs in Node 22 and
   in Workers).
 - **`keyId`** is the first 16 hex characters of SHA-256 of the raw public key.
 
-## What SADAKO does with a page
+## What OHAYO! does with a page
 
 `pullPartnerScores` in `apps/ingester/src/partner.ts`:
 
 1. Reads the stored cursor (`partner_sync`, source `partner_api`) and requests pages until
    one is empty.
-2. Rejects the whole pull, without moving the cursor, if `keyId` is not the key SADAKO
+2. Rejects the whole pull, without moving the cursor, if `keyId` is not the key OHAYO!
    pinned (`PARTNER_PUBLIC_KEY`) or the partner answers with an HTTP error.
 3. Per score: signature → `badSignature`; outside 0..100 or an unparseable instant →
    `invalid`; ring not in `rings` → `unknownRing`; an `external_id` already stored with
@@ -104,13 +104,13 @@ npm run keygen -w @midnight-demo/partner-mock
 prints `PARTNER_SIGNING_KEY` (PKCS#8, base64), `PARTNER_PUBLIC_KEY` (raw, hex) and a random
 `PARTNER_API_KEY`.
 
-| Variable | Partner mock | SADAKO gateway |
+| Variable | Partner mock | OHAYO! gateway |
 |---|---|---|
 | `PARTNER_SIGNING_KEY` | required | — |
 | `PARTNER_PUBLIC_KEY` | — | required for pull |
 | `PARTNER_API_KEY` | required | required for pull |
 | `PARTNER_URL` | — | required for pull |
-| `PARTNER_ALLOWED_ORIGIN` | the SADAKO origin allowed to `POST /v1/measurements` (default `http://localhost:8787`) | — |
+| `PARTNER_ALLOWED_ORIGIN` | the OHAYO! origin allowed to `POST /v1/measurements` (default `http://localhost:8787`) | — |
 | `PARTNER_DB_URL` | libSQL URL (default `file:data/partner-mock.db`) | — |
 | `PARTNER_PORT` | default `8788` | — |
 

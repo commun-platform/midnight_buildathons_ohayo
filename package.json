@@ -1,5 +1,5 @@
 {
-  "name": "sadako-worksite-condition",
+  "name": "ohayo-worksite-condition",
   "version": "0.1.0",
   "private": true,
   "license": "Apache-2.0",
@@ -11,7 +11,11 @@
     "packages/*"
   ],
   "overrides": {
-    "@midnight-ntwrk/onchain-runtime-v3": "3.0.0"
+    "@midnight-ntwrk/onchain-runtime-v3": "3.0.0",
+    "@effect/platform-node-shared": "4.0.0-rc.117",
+    "@effect/sql-d1": "4.0.0-rc.117",
+    "@effect/sql-sqlite-do": "4.0.0-rc.117",
+    "@effect/vitest": "4.0.0-rc.117"
   },
   "dependencies": {
     "@midnight-ntwrk/onchain-runtime-v3": "3.0.0"

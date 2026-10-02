@@ -11,20 +11,13 @@ import {
   createDatabase,
   libsqlConfigFromEnv,
   loadConditionMigrations,
-  type SqlDatabase,
 } from '@midnight-demo/db';
-import { reconcileSubmissions } from '@midnight-demo/ingester/reconcile';
-import { submitStagedFeed } from '@midnight-demo/ingester/submit';
 import type { PartnerConfig } from '@midnight-demo/ingester/partner';
 import type { ConditionChain } from '@midnight-demo/ingester-core';
 
-import {
-  saltFromHex,
-  type GatewayDeps,
-  type ReconcileFn,
-  type SubmitStagedFn,
-} from './deps.js';
 import { authConfigFromEnv } from './auth.js';
+import { reconcileWith, submitStagedWith } from './chain-deps.js';
+import { saltFromHex, type GatewayDeps } from './deps.js';
 import { handleApi } from './routes.js';
 import { securityHeaders } from './security.js';
 
@@ -87,23 +80,6 @@ async function chainCapability(): Promise<ConditionChain | undefined> {
   const chain = await import('@midnight-demo/midnight-chain').catch(() => null);
   if (!chain) return undefined;
   return chain.conditionChain(chain.resolveNetwork(network), address) as ConditionChain;
-}
-
-function reconcileWith(db: SqlDatabase, chain: ConditionChain): ReconcileFn {
-  return async (entryKeys) => {
-    const r = await reconcileSubmissions(db, chain, { entryKeys: [...entryKeys], phased: true });
-    return {
-      confirmed: r.confirmed,
-      localChecked: r.localChecked,
-      mismatches: r.mismatches.length,
-      valueMismatches: r.valueMismatches.length,
-      missing: r.missing.length,
-    };
-  };
-}
-
-function submitStagedWith(db: SqlDatabase, chain: ConditionChain, salt: Uint8Array): SubmitStagedFn {
-  return (options) => submitStagedFeed(db, chain, salt, options);
 }
 
 async function serveStatic(pathname: string, headers: Record<string, string>): Promise<Response> {

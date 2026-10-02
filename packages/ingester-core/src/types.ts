@@ -67,3 +67,16 @@ export interface ConditionChain {
   submitReadings(request: SubmitReadingsRequest): Promise<ReadingOutcome[]>;
   readEntries(entryKeys: readonly string[]): Promise<Map<string, OnChainEntry>>;
 }
+
+export interface RunnerSubmitRequest {
+  readings: ConditionRecord[];
+  roster: Ring[];
+  submittedEntryKeys: string[];
+  saltHex: string;
+}
+
+export type RunnerJob =
+  | { state: 'running'; stage?: string }
+  | { state: 'done'; outcomes: ReadingOutcome[] }
+  | { state: 'failed'; error: string }
+  | { state: 'unknown' };

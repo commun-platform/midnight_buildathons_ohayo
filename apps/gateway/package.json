@@ -6,7 +6,10 @@
   "type": "module",
   "exports": {
     ".": "./src/routes.ts",
-    "./deps": "./src/deps.ts"
+    "./auth": "./src/auth.ts",
+    "./chain-deps": "./src/chain-deps.ts",
+    "./deps": "./src/deps.ts",
+    "./security": "./src/security.ts"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json --noEmit",

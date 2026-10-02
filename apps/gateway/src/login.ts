@@ -3,7 +3,7 @@ import type { GatewayDeps } from './deps.js';
 import { GUEST_SESSION_MS, signSession, WALLET_SESSION_MS, type SessionRole } from './session.js';
 import { isWalletSignature, sha256Hex, verifyWalletSignature, walletKeyHash } from './wallet-signature.js';
 
-export const LOGIN_DOMAIN = 'SADAKO-LOGIN-V1';
+export const LOGIN_DOMAIN = 'OHAYO-LOGIN-V1';
 const CHALLENGE_MS = 5 * 60 * 1000;
 const INVITE_RE = /^[A-Z2-9]{4}-[A-Z2-9]{4}-[A-Z2-9]{4}$/;
 const INVITE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -41,7 +41,7 @@ export function generateInviteCode(): string {
   return [chars.slice(0, 4), chars.slice(4, 8), chars.slice(8, 12)].map((g) => g.join('')).join('-');
 }
 
-export const inviteHash = (code: string) => sha256Hex(`sadako-invite-v1:${code}`);
+export const inviteHash = (code: string) => sha256Hex(`ohayo-invite-v1:${code}`);
 
 export function loginMessage(parts: {
   origin: string;

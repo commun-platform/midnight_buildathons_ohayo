@@ -1,4 +1,4 @@
-# SADAKO — Next-phase design
+# OHAYO! — Next-phase design
 
 > Agreed design (2026-09-30), **being implemented phase by phase — progress in §11**. When phase 6 lands it
 > replaces the "everything runs locally" constraint in
@@ -16,7 +16,7 @@
 | # | Feature | Decision |
 |---|---|---|
 | 1 | Partner-side dummy server | New `apps/partner-mock/`, its own storage, fetch-style handler (Node locally, a separate Worker when hosted) |
-| 2 | Worker screen → dummy server | The browser POSTs **directly** to the partner; SADAKO is not on that path |
+| 2 | Worker screen → dummy server | The browser POSTs **directly** to the partner; OHAYO! is not on that path |
 | 3 | Admin "fetch data" button | `POST /api/partner/pull` → verified, idempotent insert into `condition_readings` as `pending` |
 | 4 | Contract deployment + runbook | Midnight **preprod**, deployed from the development host; runbook `docs/deploy_preprod.md` |
 | 5 | Wallet login | Lace via DApp Connector 4.x `signData`; token login is removed |
@@ -26,7 +26,7 @@
 | 9 | Public verifier | `/verify`, no login — reads the entry from the chain, never from the DB |
 | 10 | Selective disclosure | A worker issues a disclosure receipt for their own value; `/verify` checks it against the on-chain commitment |
 | 11 | In-app demo guide | A five-step checklist that ticks itself |
-| 12 | Judging-period operation | Both containers always-on while judging (§9.10) |
+| 12 | Judging-period operation | Containers start on demand and sleep when idle, to keep the bill at the Workers Paid US$5 (§9.10; changed from always-on on 2026-09-30) |
 
 The contract (`condition-registry`) does not change in this phase.
 
@@ -36,6 +36,13 @@ Decisions that were weighed and settled, so a later session does not reopen them
   work with the development host switched off.
 - **D1**, not Turso — everything stays inside one Cloudflare account, as BACCHIRI does.
 - **Decisions stay in the DB** — accepted that they are not tamper-evident.
+- **The product is OHAYO!** (renamed from SADAKO on 2026-10-02). Code, screens, docs and
+  Cloudflare resource names say `ohayo` (the Workers are `midnight-proof-ohayo` and
+  `midnight-proof-ohayo-partner`, served at `midnight-proof-ohayo.commun-official.workers.dev`); only the two submitter-key domain strings keep
+  the old name — `"sadako:submitter:pk:"` in `condition-registry.compact` and
+  `'sadako:submitter:sk:v1'` in `packages/midnight-chain/src/state.ts` — because changing
+  them changes the contract and the derived submitter key, and the preprod contract
+  (`1fca6b4c…`) was deployed with them.
 - **Wallet login replaces token login**; the guest entry (feature 8) exists only so
   that evaluators without Lace can still walk the demo.
 
@@ -45,7 +52,7 @@ This document is the hand-off between sessions. Each phase in §11 is sized for 
 session.
 
 1. Read, in order: this document → [`worksite_condition_system.md`](worksite_condition_system.md)
-   (the current spec) → `AGENTS.md` → `.claude/skills/sadako-demo/SKILL.md`.
+   (the current spec) → `AGENTS.md` → `.claude/skills/ohayo-demo/SKILL.md`.
 2. Pick the first phase in §11 whose status is not `done`, and read only the §0.2 rows
    it needs.
 3. When the phase lands, set its status in §11 and correct anything in this document
@@ -55,10 +62,10 @@ Current conventions this design overrides, and when:
 
 | Convention (where) | Changes in |
 |---|---|
-| "Everything runs locally, no cloud target" (`AGENTS.md`, the spec, `SKILL.md`) | phase 6 |
+| "Everything runs locally, no cloud target" (`AGENTS.md`, the spec, `SKILL.md`) | phase 6 — done |
 | "libSQL only. No D1, no Cloudflare" (`SKILL.md`) | phase 0 (D1 adapter — done; `SKILL.md` updated), phase 6 (hosting) |
 | "Auth is the token" (`AGENTS.md`, spec §3, `SKILL.md`) | phase 5 — done |
-| "Schema changes go straight into `0001_condition_schema.sql`" (`SKILL.md`) | holds until phase 6; after that, numbered migrations (§4.3) |
+| "Schema changes go straight into `0001_condition_schema.sql`" (`SKILL.md`) | phase 6 — done: `0001` is frozen from the first hosted deployment; later changes are numbered migrations (§4.3) |
 | The two-press verify (`SKILL.md`, spec §7.4) | phase 7 (§9.8); the tamper checkbox stays |
 
 ### 0.2 Reference implementation — BACCHIRI
@@ -81,32 +88,32 @@ Current conventions this design overrides, and when:
   ```
 
   Browse: `https://github.com/commun-platform/midnight_buildathons_bacchili/blob/562ad131767db99bcf0d2485d7d7edc3f0bd07bb/<path>`.
-- Ported code keeps its Apache-2.0 terms; add a line to SADAKO's `NOTICE` naming
+- Ported code keeps its Apache-2.0 terms; add a line to OHAYO!'s `NOTICE` naming
   BACCHIRI as the source.
-- BACCHIRI's code carries comments; SADAKO's does not (`AGENTS.md`). Drop them when porting.
+- BACCHIRI's code carries comments; OHAYO!'s does not (`AGENTS.md`). Drop them when porting.
 
-| SADAKO part | BACCHIRI path (at the pinned commit) | Take | Change for SADAKO |
+| OHAYO! part | BACCHIRI path (at the pinned commit) | Take | Change for OHAYO! |
 |---|---|---|---|
-| Worker config (§8.1) | `backend/cloudflare/deployment/wrangler.jsonc` | `containers`, `durable_objects.bindings`, `exports`, `d1_databases` (+ `migrations_dir`), `r2_buckets`, `triggers.crons`, `ratelimits`, `assets` (`binding`, `not_found_handling`, `run_worker_first`), `compatibility_flags` | drop `queues`, the managed-source and MCP bindings; names `sadako` / `sadako-partner`; containers `ChainRunnerContainer` + `ProofServerContainer` |
-| Secrets template | `backend/cloudflare/deployment/.dev.vars.example` | layout | SADAKO's secret names (§8.1) |
+| Worker config (§8.1) | `backend/cloudflare/deployment/wrangler.jsonc` | `containers`, `durable_objects.bindings`, `exports`, `d1_databases` (+ `migrations_dir`), `r2_buckets`, `triggers.crons`, `ratelimits`, `assets` (`binding`, `not_found_handling`, `run_worker_first`), `compatibility_flags` | drop `queues`, the managed-source and MCP bindings; names `ohayo` / `ohayo-partner`; containers `ChainRunnerContainer` + `ProofServerContainer` |
+| Secrets template | `backend/cloudflare/deployment/.dev.vars.example` | layout | OHAYO!'s secret names (§8.1) |
 | Proof server container (§8.1) | `backend/cloudflare/proof-gateway-worker/src/index.ts` — `class ProofServerContainer` (line 86) | `startAndWaitForPorts` with a long `portReadyTimeoutMS`, `allowedHosts: ['srs.midnight.network']`, `interceptHttps`, `SSL_CERT_FILE`, `entrypoint` | none beyond naming |
 | Chain runner container (§8.1, §8.2) | same file — `class ServerWalletContainer` (line 180) and `walletRuntimeOutboundByHost` (line 500: `proof.internal` → proof server, `state.internal` → R2 checkpoint) | `enableInternet` + `allowedHosts` (preprod indexer / rpc), `pingEndpoint`, graceful stop, the two internal egress hosts | endpoints `/health`, `/submit`, `/read`, `/open` instead of the sponsor ones |
 | Secret injection | `backend/cloudflare/proof-gateway-worker/src/wallet-runtime-secrets.ts` | the seed goes only into the container's process environment | `OPERATING_WALLET_SEED`, `INGESTER_SALT_HEX`, `DEVELOPMENT_PRIVATE_STATE_PASSWORD` |
-| Wallet checkpoint (§8.4) | container side: `backend/cloudflare/sponsor-wallet-container/src/checkpoint.ts` (`encryptCheckpoint` / `decryptCheckpoint`, keyed by the seed), `checkpoint-restore.ts`, `checkpoint-upload.ts`, `checkpoint-cache.ts`; Worker side: `backend/cloudflare/proof-gateway-worker/src/sponsor-checkpoint.ts` (R2 keys, 128 MiB cap, recovery copy) | the whole mechanism | R2 keys `sadako-wallet/preprod/checkpoint.enc`; hook it into `persistWalletState` in `packages/midnight-chain/src/wallet.ts` |
+| Wallet checkpoint (§8.4) | container side: `backend/cloudflare/sponsor-wallet-container/src/checkpoint.ts` (`encryptCheckpoint` / `decryptCheckpoint`, keyed by the seed), `checkpoint-restore.ts`, `checkpoint-upload.ts`, `checkpoint-cache.ts`; Worker side: `backend/cloudflare/proof-gateway-worker/src/sponsor-checkpoint.ts` (R2 keys, 128 MiB cap, recovery copy) | the whole mechanism | R2 keys `ohayo-wallet/preprod/checkpoint.enc`; hook it into `persistWalletState` in `packages/midnight-chain/src/wallet.ts` |
 | Health and sync progress (§8.2 `/health`) | `backend/cloudflare/sponsor-wallet-container/src/supervisor.ts`, `supervisor-health.ts` (`WalletPhase`, cached health), `sync-progress.ts` | a PID-1 supervisor that answers health from cache while the wallet SDK child syncs | phases map to `starting` / `syncing` / `ready` / `degraded` |
 | Container private state (§8.4) | `backend/cloudflare/sponsor-wallet-container/src/in-memory-private-state-provider.ts` | as is | the nonce leaves through the `/submit` response into `opening_ciphertext` |
 | Container image | `backend/cloudflare/sponsor-wallet-container/Dockerfile` | `node:22.15.0-bookworm-slim`, workspace-scoped `npm ci`, prover-key presence checks | copy `packages/{midnight-chain,shared,ingester-core,db,condition-read}` and `contracts/condition-registry` with its compiled `src/managed/` |
 | One Cron run drives the container | `backend/cloudflare/proof-gateway-worker/src/server-wallet-work.ts` (`acquireServerWalletWarmupLease`, `nextServerWalletWork`) | the lease pattern | the work item is a `queued` row in `condition_readings` |
 | Operating profile (§9.10) | `backend/cloudflare/proof-gateway-worker/src/sponsor-operating-window.ts`, `backend/cloudflare/d1-schema/migrations/0037_sponsor_wallet_on_demand.sql`, `docs/operations/sponsor_wallet_operating_hours.md` | a D1 row read by the Cron, restart cool-down | only `always-on` / `on-demand` |
-| D1 adapter (§8.4) | `backend/cloudflare/proof-gateway-worker/src/storage/d1.ts` (`D1SqlDatabase`), `storage/sql.ts` | the class body | implement SADAKO's `SqlDatabase` from `packages/db/src/sql.ts` |
-| Wallet login, server (§6) | `backend/cloudflare/proof-gateway-worker/src/browser-wallet-signature.ts` | `data === canonical`, then `schnorr.verify(signature, sha256(utf8(canonical)), verifyingKey)` with `@noble/curves/secp256k1` and `@noble/hashes/sha256` | SADAKO's canonical message (§6) |
+| D1 adapter (§8.4) | `backend/cloudflare/proof-gateway-worker/src/storage/d1.ts` (`D1SqlDatabase`), `storage/sql.ts` | the class body | implement OHAYO!'s `SqlDatabase` from `packages/db/src/sql.ts` |
+| Wallet login, server (§6) | `backend/cloudflare/proof-gateway-worker/src/browser-wallet-signature.ts` | `data === canonical`, then `schnorr.verify(signature, sha256(utf8(canonical)), verifyingKey)` with `@noble/curves/secp256k1` and `@noble/hashes/sha256` | OHAYO!'s canonical message (§6) |
 | Wallet login, browser (§6) | `frontend/verification-portal/src/midnight-device.ts` — `connectBrowserWallet` (line 173): discovery over `window.midnight`, `apiVersion` `4.x`, `connect(networkId)`, `getConnectionStatus`, `getConfiguration` network check, `signData(message, { encoding: 'text', keyType: 'unshielded' })`; `wallet-compatibility.ts` (disconnect / error classification) | the logic | rewrite as a plain ES module in `apps/dashboard/public/` (no build); no shielded addresses needed |
 | Partner CORS (§2) | `backend/cloudflare/proof-gateway-worker/src/cors.ts` | the preflight helper | allow `PARTNER_ALLOWED_ORIGIN` only |
-| Security headers | `frontend/verification-portal/public/_headers` | CSP shape | SADAKO already has `apps/dashboard/public/_headers` |
+| Security headers | `frontend/verification-portal/public/_headers` | CSP shape | OHAYO! already has `apps/dashboard/public/_headers` |
 | Partner mock API (§2) | `docs/implementation/mock_measurement_source_api.md` | Bearer test token, deterministic responses, `GET /health` | cursor-based `daily-scores`, Ed25519 signatures |
-| Deployment runbook (§7) | `docs/operations/demo_runbook.md` | order: wallet → funding → deploy → secrets through `wrangler secret put` on stdin | SADAKO's `condition:*` scripts |
-| Submission documents (§9.11) | `docs/submission/README.md`, `evidence_matrix.md`, `judge_qa.md`, `one_page_brief.md`, `deliverables_plan.md` (rubric) | structure and tone | SADAKO's claims |
-| Background only | `docs/architecture/system_architecture.md`, `docs/implementation/fee_sponsorship.md`, `frontend/verification-portal/public/demo-mode.js` | — | SADAKO has no fee sponsorship and no `?demo=1` mode |
+| Deployment runbook (§7) | `docs/operations/demo_runbook.md` | order: wallet → funding → deploy → secrets through `wrangler secret put` on stdin | OHAYO!'s `condition:*` scripts |
+| Submission documents (§9.11) | `docs/submission/README.md`, `evidence_matrix.md`, `judge_qa.md`, `one_page_brief.md`, `deliverables_plan.md` (rubric) | structure and tone | OHAYO!'s claims |
+| Background only | `docs/architecture/system_architecture.md`, `docs/implementation/fee_sponsorship.md`, `frontend/verification-portal/public/demo-mode.js` | — | OHAYO! has no fee sponsorship and no `?demo=1` mode |
 
 ---
 
@@ -116,10 +123,10 @@ Current conventions this design overrides, and when:
 Browser (framework-free SPA, Lace login or guest entry)
    │  /api/*                                   │  POST /v1/measurements (worker screen)
    ▼                                           ▼
-Worker sadako                                Worker sadako-partner
- ├─ Static Assets  apps/dashboard/public      ├─ D1 sadako-partner
+Worker ohayo                                Worker ohayo-partner
+ ├─ Static Assets  apps/dashboard/public      ├─ D1 ohayo-partner
  ├─ handleApi      (the same code as Node)    └─ Ed25519 signing key (secret)
- ├─ D1 sadako      roster / readings /             ▲
+ ├─ D1 ohayo      roster / readings /             ▲
  │                 submissions / decisions /       │ GET /v1/daily-scores (API key)
  │                 wallet bindings / guests        │
  ├─ Cron (1 min)   drain queued readings ──────────┘ (pull is admin-triggered)
@@ -144,7 +151,7 @@ the read path (SHA-256 only), partner pulls and the queue.
 ## 2. Partner mock — `apps/partner-mock/`
 
 Stands in for the partner company's ring → app → server path. It owns the
-0–100 computation; SADAKO never computes the score.
+0–100 computation; OHAYO! never computes the score.
 
 | Method / path | Auth | What |
 |---|---|---|
@@ -154,14 +161,14 @@ Stands in for the partner company's ring → app → server path. It owns the
 | `GET /health` | none | `{ ok: true }` |
 
 - **Signature**: Ed25519 (WebCrypto — Node 22 and Workers) over
-  `sadako-partner-score-v1\n{id}\n{ringId}\n{measuredAt}\n{score}`. SADAKO holds
+  `ohayo-partner-score-v1\n{id}\n{ringId}\n{measuredAt}\n{score}`. OHAYO! holds
   `PARTNER_PUBLIC_KEY`. This closes the spec's "partner signature" open question
   off-chain (the circuit still does not check it).
 - **Cursor** is the partner's monotonic receive sequence, not `measuredAt`, so a
   late-arriving measurement is never skipped.
-- **CORS** allows only `PARTNER_ALLOWED_ORIGIN` (the SADAKO origin).
-- **Storage** is separate from SADAKO: `data/partner-mock.db` locally, D1
-  `sadako-partner` when hosted, through the existing `SqlDatabase` interface.
+- **CORS** allows only `PARTNER_ALLOWED_ORIGIN` (the OHAYO! origin).
+- **Storage** is separate from OHAYO!: `data/partner-mock.db` locally, D1
+  `ohayo-partner` when hosted, through the existing `SqlDatabase` interface.
 
 ---
 
@@ -170,7 +177,7 @@ Stands in for the partner company's ring → app → server path. It owns the
 - The worker's Today (self) view gets a "ring sync" card: a score input (0–100)
   and a send button. (Decided on 2026-09-30: the score is entered directly; the
   partner API still accepts vitals.)
-- The browser POSTs straight to `partnerUrl`. The raw value reaches SADAKO only
+- The browser POSTs straight to `partnerUrl`. The raw value reaches OHAYO! only
   when the admin pulls, which mirrors the real data path.
 - Changes: `/api/me` adds `ringId` (the current `ring_worker_map` entry);
   `/api/config` adds `partnerUrl`; CSP `connect-src` adds the partner origin
@@ -248,8 +255,9 @@ endpoint enters or edits a value.
 
 Until the hosted D1 exists (phase 6), edit
 `packages/db/migrations/0001_condition_schema.sql` directly — the current rule in
-`.claude/skills/sadako-demo/SKILL.md`. Once D1 holds data, later changes become new
-numbered migration files.
+`.claude/skills/ohayo-demo/SKILL.md`. Once D1 holds data, later changes become new
+numbered migration files. Phase 6 made the last in-place edit (the queue columns and
+`chain_jobs`, §8.6).
 
 - `condition_readings`: `external_id TEXT UNIQUE`, `partner_sig TEXT`,
   `last_error TEXT`, `status` gains `queued` / `failed`.
@@ -312,7 +320,7 @@ SPA                                    Worker
  │◀─ { session, role, workerId } ────────────────
 ```
 
-- **Message**: `SADAKO-LOGIN-V1\n{origin}\n{challengeId}\n{nonce}\n{issuedAt}` plus
+- **Message**: `OHAYO-LOGIN-V1\n{origin}\n{challengeId}\n{nonce}\n{issuedAt}` plus
   `invite:{code}` when an invite is being redeemed.
 - **Verification** uses `@noble/curves` (secp256k1 BIP-340 over the SHA-256 of the
   payload) — no WASM, runs in the Worker. Signing needs no funds.
@@ -383,9 +391,10 @@ BACCHIRI's `docs/operations/demo_runbook.md`. `docs/deploy_preprod.md`
    proof, deploy → `CONDITION_REGISTRY_CONTRACT_ADDRESS`. With a new wallet this took
    about 70 minutes on 2026-09-30, about 65 of them the DUST wallet sync.
 6. `run.sh deploy_preprod status` → confirm.
-7. Hand over to Cloudflare: seed → `OPERATING_WALLET_SEED`, salt → `INGESTER_SALT_HEX`,
-   address → Worker vars, each through `wrangler secret put` on stdin so nothing is
-   echoed. **From here only the container uses this wallet**; the submitter key is
+7. Hand over to Cloudflare with `run.sh cloudflare deploy` ([`deploy_cloudflare.md`](deploy_cloudflare.md)):
+   the Alchemy stack reads the mnemonic (→ Worker secret `OPERATING_WALLET_MNEMONIC`), the
+   salt, the private-state password and the contract address from `.env.preprod`, so nothing
+   is echoed or typed. **From here only the container uses this wallet**; the submitter key is
    derived from the seed (`submitterSecretKeyHex` in
    `packages/midnight-chain/src/state.ts`), and concurrent use from two hosts collides
    on DUST.
@@ -403,13 +412,13 @@ Done in phase 4: the `run.sh deploy_preprod` lane (+ `run.ps1`) runs this withou
 
 | Resource | Role |
 |---|---|
-| Worker `sadako` | `worker.ts`: `handleApi(request, deps) ?? env.ASSETS.fetch(request)`; Cron; container classes |
-| D1 `sadako` | `packages/db/migrations` applied with `wrangler d1 migrations apply` |
+| Worker `midnight-proof-ohayo` | `worker.ts`: `handleApi(request, deps) ?? env.ASSETS.fetch(request)`; Cron; container classes |
+| D1 `ohayo` | `packages/db/migrations` applied on deploy (as built: by the Alchemy stack, §8.6) |
 | `ChainRunnerContainer` | Node image over `@midnight-demo/midnight-chain`; egress only to the preprod indexer / rpc and the Worker-routed internal hosts; `sleepAfter` 10 m outside judging |
 | `ProofServerContainer` | the official `proof-server:8.1.0` image; fetches its proving parameters from `srs.midnight.network` on every fresh start; `sleepAfter` 2 m outside judging |
-| R2 `sadako-wallet-state` | encrypted wallet sync checkpoint (warm restore) |
-| Worker `sadako-partner` + D1 `sadako-partner` | the partner mock |
-| Secrets | `OPERATING_WALLET_SEED`, `INGESTER_SALT_HEX`, `DEVELOPMENT_PRIVATE_STATE_PASSWORD`, `SESSION_SECRET`, `OPENING_KEY`, `ADMIN_WALLET_KEY_HASHES`, `PARTNER_API_KEY`, `PARTNER_PUBLIC_KEY` (and the partner's signing key) |
+| R2 `ohayo-wallet-state` | encrypted wallet sync checkpoint (warm restore) |
+| Worker `midnight-proof-ohayo-partner` + D1 `ohayo-partner` | the partner mock |
+| Secrets | `OPERATING_WALLET_SEED`, `INGESTER_SALT_HEX`, `DEVELOPMENT_PRIVATE_STATE_PASSWORD`, `SESSION_SECRET`, `OPENING_KEY`, `ADMIN_WALLET_KEY_HASHES`, `PARTNER_API_KEY`, `PARTNER_PUBLIC_KEY` (and the partner's signing key). As built: `OPERATING_WALLET_MNEMONIC` instead of the seed, and `OPENING_KEY` moves to phase 7 (§8.6) |
 
 Cloudflare Containers need the Workers Paid plan, and container time is billed
 while running (§9.10).
@@ -429,7 +438,7 @@ Every minute the Cron picks `queued` readings. If `/health` is not `ready` they
 stay queued and the UI shows "wallet syncing"; otherwise they go to `/submit` in
 bounded batches and the Worker writes the `submissions` rows. The contract's
 `assert(!entries.member(key))` keeps retries safe. BACCHIRI adds Cloudflare Queues +
-DLQ (`queues` in its `wrangler.jsonc`); SADAKO can add them later if volume demands.
+DLQ (`queues` in its `wrangler.jsonc`); OHAYO! can add them later if volume demands.
 
 ### 8.4 Refactors this requires
 
@@ -488,12 +497,97 @@ Phase 0 landed the first three items; they describe the code as built.
 
 ### 8.5 How this differs from BACCHIRI
 
-| | BACCHIRI | SADAKO |
+| | BACCHIRI | OHAYO! |
 |---|---|---|
 | Who builds the tx | the device binds it; the server wallet only adds DUST (fee sponsorship, `docs/implementation/fee_sponsorship.md`) | the operating wallet is the submitter, so the container plans, proves and submits |
 | Job delivery | Queues + DLQ + Cron | Cron over the D1 `status` column |
 | Frontend | Vite build with midnight-js (`frontend/verification-portal/vite.config.ts`) | no build — the SPA only calls `connect` / `signData` |
 | Containers | proof server + server wallet (`standard-2` + `standard-4`) | proof server + chain runner, sized by measurement (§9.10) |
+
+### 8.6 As built in phase 6
+
+- **Where the code lives.** The Worker is its own workspace, `apps/worker/`
+  (`worker.ts`, `containers.ts`, `deps.ts`, `checkpoint-store.ts`, and the Alchemy stack
+  `alchemy.run.ts`), not `apps/gateway/src/worker.ts`: it needs `@cloudflare/containers`,
+  Alchemy and the Workers types, which the Node gateway should not carry. It reuses `handleApi` and the
+  Worker-safe gateway modules (`@midnight-demo/gateway/{auth,chain-deps,deps,security}`).
+  The container image is `apps/chain-runner/` (`Dockerfile`, a fetch-style `handler.ts`,
+  `server.ts`, `jobs.ts`, `checkpoint.ts`). The partner mock's Worker entry is
+  `apps/partner-mock/src/worker.ts`, declared in the same stack.
+  `apps/gateway/src/boundary.test.ts` walks both Worker entries.
+- **Container API** (§8.2 as built): `GET /health` (`{ running, stage }`),
+  `POST /jobs { jobId, request }` → 202 (409 while another job runs; the same `jobId`
+  again is accepted as `exists`), `GET /jobs/:id` → `RunnerJob`
+  (`running` + stage / `done` + `ReadingOutcome[]` / `failed` + error / `unknown`), and
+  `POST /read { entryKeys }`. The request carries the salt (`saltHex`), the roster and the
+  submitted entry keys, so the container holds no salt secret and no database. `/open`
+  is left to phase 7 with the receipts.
+- **Queue** (§8.3 as built): in the hosted mode the admin's submit only marks rows
+  `queued` (`queued_by`, `queued_at`, `queued_tamper`) through `enqueueReadings`
+  (`apps/ingester/src/queue.ts`); `/api/config` reports `submitQueued`. The minute Cron
+  runs `drainQueue`: with no running job and no queued row it returns without touching
+  the container; otherwise it inserts a `chain_jobs` row (a partial unique index allows
+  one `running` row, which serialises overlapping Cron runs), posts up to 10 readings,
+  polls the job on later runs, then `recordOutcomes` (per-row submitter and tamper) and
+  confirms the untampered entries through `/read`. A job the container no longer knows,
+  one that is not accepted, or one that runs past 90 minutes is `lost` and its rows stay
+  queued; a job that fails marks its rows `failed` with the error. A guest's queued rows
+  count against its submission limits. The staged list returns the latest job, and the
+  queue screen shows its stage and refreshes every 15 seconds while work is pending. The
+  local Node gateway keeps the synchronous submit.
+- **Private state and openings**: the container keeps the LevelDB private-state provider
+  on its ephemeral disk. `submissions.opening_ciphertext` (`OPENING_KEY`) moves to phase 7
+  with the receipts that need it; until then a hosted entry's nonce is not stored.
+- **Wallet checkpoint**: not the whole BACCHIRI mechanism. The runner recreates the
+  wallet for each job (as on Node), so the checkpoint is the three wallet-sync files
+  sealed with AES-256-GCM under a key derived from the seed (`apps/chain-runner/src/checkpoint.ts`):
+  restored from R2 through `state.internal` at the start of a job when the local copy is
+  missing, stored after every job (the previous object is kept as
+  `checkpoint.previous.enc`). There is no periodic upload and no stalled-sync recovery;
+  a stuck job hits the 90-minute timeout and is retried. The first checkpoint is sealed
+  on the development host from the preprod deployment's synced state
+  (`run.sh cloudflare checkpoint`), which saves the hour-long first sync.
+- **Secrets**: the mnemonic goes in as `OPERATING_WALLET_MNEMONIC` (the container gets it
+  as `DEVELOPMENT_WALLET_MNEMONIC`, so `getOrCreateWalletCredentials` works unchanged)
+  rather than a derived `OPERATING_WALLET_SEED`, so the handover never derives or prints a
+  seed. The partner keys for the hosted pair are generated separately from the local dev
+  keys. `/api/auth/*` is limited to 20 requests a minute per client IP
+  (`AUTH_RATE_LIMITER`).
+- **First hosted run (2026-10-03)**: the chain runner exited with code 1 about 2.5
+  minutes into every job. Cause: `createSubmissionService` opened the `@polkadot` RPC
+  connection when the wallet was created, and the CPU-bound catch-up sync (99 % of the
+  half vCPU) starved the event loop, so the RPC's 60-second request timer threw outside
+  any handler. Fixes: the RPC connects lazily on the first submission, its request timeout
+  is 5 minutes (`packages/midnight-chain/src/submission.ts`), and the runner turns an
+  uncaught exception or unhandled rejection into a failed job (`jobs.abort`) instead of
+  dying. Measured: about 600 MB of memory, CPU pinned, so the runner is now a custom
+  1 vCPU / 3 GiB instance (twice the CPU, a quarter less billed memory than `standard-1`);
+  the proof server stays `standard-1`. Both log their exit code and reason
+  (`container_stopped`) and ship container logs. The guest reading then went through in
+  under 3 minutes from a cold start; it was recorded as recovered (`tx_id` `backfilled`)
+  because an earlier crashed attempt had already landed the transaction.
+- **Partner**: `midnight-proof-ohayo` reaches `midnight-proof-ohayo-partner` through a service binding (`PARTNER`),
+  since one workers.dev Worker cannot fetch another by URL; browsers post to it directly.
+  The Worker sets the security headers on every asset (`run_worker_first: true`) so the
+  CSP's `connect-src` can name the partner origin.
+- **Infrastructure as code** (decided 2026-10-01, replacing the first `wrangler.jsonc` +
+  wrangler-step lane): everything on Cloudflare is one Alchemy v2 stack,
+  `apps/worker/alchemy.run.ts` (`alchemy` 2.0.0-beta.79 with `effect` 4.0.0-rc.117 —
+  rc.118 moved modules that beta.79 imports, hence the pin and the root `overrides`): the two
+  D1 databases with their migrations, the R2 bucket (`forceDestroy`), both Workers with their
+  bindings, secrets and Cron, the rate limiter, and both containers — Alchemy builds the
+  chain-runner image from `apps/chain-runner/Dockerfile`, re-pushes the proof-server image and
+  wires the Durable Object classes. Terraform was set aside because its Cloudflare provider
+  cannot build or push container images and has open Durable Object migration issues; the
+  new `cf` CLI (beta since 2026-09-28) cannot set secrets yet and has no destroy.
+  `run.sh cloudflare [check|plan|deploy|checkpoint|status|tail|destroy|all]` (+ `run.ps1`)
+  runs the stack in Docker with the host Docker socket, credentials from `.env.cloudflare`
+  (API token, account id, workers.dev subdomain) and secrets from `.env.preprod` plus the
+  generated `.state/cloudflare/secrets.env`. The stack state lives in
+  `.state/cloudflare/.alchemy/` and holds the secret values in plain text, like
+  `.env.preprod`. `destroy` asks for confirmation, runs `alchemy destroy` and deletes the
+  leftover container images; wrangler stays only for the checkpoint upload, `tail` and that
+  image cleanup. Runbook: [`deploy_cloudflare.md`](deploy_cloudflare.md).
 
 ---
 
@@ -565,7 +659,7 @@ Steps 2, 4 and 5 work on the showcase history, so they never wait for step 3.
   cannot be deleted.
 - Quotas: at most 3 on-chain submissions per guest plus a global hourly cap (D1 counters);
   Workers rate limiting on `/api/auth/*` (the `ratelimits` block in BACCHIRI's
-  `wrangler.jsonc`).
+  `wrangler.jsonc`; as built, 20 a minute per client IP, §8.6).
 - A nightly reset returns D1 to the showcase snapshot. Guest entries already on chain stay
   there; they are pseudonymous and harmless.
 
@@ -642,7 +736,16 @@ passes the remaining allowance as its `limit`, and a spent allowance returns 429
 
 ### 9.10 Judging-period operation and cost
 
-The operating profile is a D1 setting read by the Cron, as in BACCHIRI's
+**As built in phase 6 (decided 2026-09-30 to keep the cost to the Workers Paid US$5):
+on demand only.** Both containers are `standard-1`; the Cron starts the chain runner only
+when a reading is queued or a job is in flight, the runner sleeps after 5 idle minutes and
+the proof server after 3, and a verify starts the runner for a read. One submission round
+costs about 1–2 GiB-hours against the plan's included 25. There is no D1 operating
+profile; the price is a first submission of several minutes (boot, checkpoint restore,
+catch-up sync, proving-parameter download), which the queue screen shows as a stage. The
+plan below stays as the reference if judging needs instant responses.
+
+The operating profile was planned as a D1 setting read by the Cron, as in BACCHIRI's
 `sponsor-operating-window.ts`: `always-on` while judging, `on-demand` otherwise. The proof
 server downloads its proving parameters from `srs.midnight.network` on every fresh start
 (BACCHIRI allows a 10-minute port-ready timeout for it), so on-demand means a multi-minute
@@ -667,8 +770,8 @@ USD→JPY at 150.
 
 - Memory is ~90 % of the bill, so right-sizing is the lever: measure the runner's peak
   (wallet sync / restore) and the proof server's in phase 6 before picking sizes. BACCHIRI
-  runs its wallet on `standard-4`, but that wallet serves more roles than SADAKO's; if
-  SADAKO's also needs it, add about $39 / month.
+  runs its wallet on `standard-4`, but that wallet serves more roles than OHAYO!'s; if
+  OHAYO!'s also needs it, add about $39 / month.
 - D1, R2, Workers requests and the minute Cron fit the Workers Paid allowances at demo
   volume; Durable Object duration adds a few dollars at most. Preprod fees are DUST from
   faucet tNIGHT — no money.
@@ -692,7 +795,7 @@ paths. A ~3-minute video follows §9.3.
 
 | Data | Where, after this phase |
 |---|---|
-| Raw 0–100 value | partner D1, SADAKO D1 (`condition_readings`); passes Worker → container on submit; never in R2 or logs |
+| Raw 0–100 value | partner D1, OHAYO! D1 (`condition_readings`); passes Worker → container on submit; never in R2 or logs |
 | Band / commitment / entryKey | unchanged (chain + D1) |
 | Commitment opening (`nonce`) | D1, AES-GCM encrypted; leaves only in a receipt the worker issues |
 | Disclosure receipt | issued only by the worker; its holder learns that one value and entry |
@@ -719,7 +822,7 @@ Each phase is one session. Update **Status** when a phase lands.
 | 3 | Work decisions (feature 7) | `apps/gateway`, `apps/dashboard/public/app.js`, `0001_condition_schema.sql` | required-reason rule and append-only behaviour tested | done (2026-09-30) — also recorded, rejected without a reason, and corrected in the browser on the local devnet |
 | 4 | Preprod deploy + runbook (feature 4) | `docs/deploy_preprod.md`, `docs/ja/deploy_preprod.md`, `run.sh`, `run.ps1` | contract on preprod following only the runbook | done (2026-09-30) — deployed with the lane the runbook documents; the runbook records that run |
 | 5 | Wallet login + guest entry (features 5, 8) | `apps/gateway/src/auth.ts`, `apps/dashboard/public/`, tests | token login removed; challenge replay, expiry, wrong key, invite reuse rejected; guest limits tested | done (2026-09-30) — guest flow walked in the browser on the local devnet; an admin login with a real Lace wallet succeeded after adopting the connector-spec `midnight_signed_message:` prefix |
-| 6 | Worker + D1 + containers (feature 6) | `apps/gateway/src/worker.ts`, `wrangler.jsonc`, container image, checkpoint port (§0.2) | the full flow works on workers.dev with the development host off; memory measured for §9.10 | not started |
+| 6 | Worker + D1 + containers (feature 6) | `apps/worker/`, `apps/chain-runner/`, `apps/partner-mock/src/worker.ts`, `run.sh cloudflare` (§8.6) | the full flow works on workers.dev with the development host off; memory measured for §9.10 | built and tested locally (2026-09-30): unit tests, both Workers bundle, the container image builds (`run.sh cloudflare check`); deployed 2026-10-02 to `https://midnight-proof-ohayo.commun-official.workers.dev` with `run.sh cloudflare deploy` + `checkpoint` (D1 migrated, checkpoint in R2); a guest reading went from the ring sync card through pull, the queue and the chain runner to a chain-confirmed preprod entry on 2026-10-03; measured about 600 MB and a pinned CPU, so the runner is 1 vCPU / 3 GiB (§8.6); the admin logged in with Lace on the hosted site |
 | 7 | Evaluation layer: public verifier, disclosure receipt, guide, verify / tamper UX, showcase seed, judging profile (features 9–12) | `apps/gateway`, `apps/dashboard/public/`, `apps/development/condition-cli` | a guest completes the golden path on workers.dev in 5 minutes | not started |
 | 8 | Submission documents + video (§9.11) | `docs/submission/`, `docs/ja/submission/`, `README.md` | every claim in the evidence matrix resolves to source, test or tx | not started |
 

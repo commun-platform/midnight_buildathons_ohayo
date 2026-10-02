@@ -1,6 +1,6 @@
 import { bytesToHex, hexToBytes } from './hex.js';
 
-export const PARTNER_SCORE_DOMAIN = 'sadako-partner-score-v1';
+export const PARTNER_SCORE_DOMAIN = 'ohayo-partner-score-v1';
 
 export type PartnerKey = Awaited<ReturnType<typeof crypto.subtle.importKey>>;
 

@@ -200,6 +200,10 @@ button.chip.decision { cursor: pointer; font: inherit; font-size: 0.78rem; }
 .invite-code { font-size: 1.4rem; letter-spacing: 0.08em; }
 .login label { display: block; margin-top: 0.8rem; font-size: 0.85rem; color: var(--muted); }
 .queue-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; margin: 0.25rem 0 0.85rem; }
+.job-status { margin: 0 0 0.6rem; overflow-wrap: anywhere; }
+.job-status.job-running strong { color: var(--accent); }
+.job-status.job-failed strong, .job-status.job-lost strong { color: var(--band-danger); }
+.job-status.job-done strong { color: var(--band-normal); }
 .chip.big { padding: 0.2rem 0.8rem; font-size: 0.95rem; }
 .chip.huge { padding: 0.4rem 1.4rem; font-size: 1.4rem; border-radius: 12px; }
 

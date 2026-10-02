@@ -38,6 +38,9 @@ CREATE TABLE condition_readings (
   external_id    TEXT UNIQUE,
   partner_sig    TEXT,
   last_error     TEXT,
+  queued_by      TEXT,
+  queued_at      TEXT,
+  queued_tamper  INTEGER NOT NULL DEFAULT 0,
   created_at     TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -155,3 +158,15 @@ CREATE TABLE guest_sessions (
   created_at TEXT NOT NULL,
   expires_at TEXT NOT NULL
 );
+
+CREATE TABLE chain_jobs (
+  id          TEXT PRIMARY KEY,
+  reading_ids TEXT NOT NULL,
+  status      TEXT NOT NULL CHECK (status IN ('running', 'done', 'failed', 'lost')),
+  stage       TEXT,
+  started_at  TEXT NOT NULL,
+  finished_at TEXT,
+  error       TEXT
+);
+
+CREATE UNIQUE INDEX chain_jobs_one_running ON chain_jobs (status) WHERE status = 'running';

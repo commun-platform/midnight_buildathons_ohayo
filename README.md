@@ -1,4 +1,4 @@
-# SADAKO
+# OHAYO!
 
 **Worker condition, recorded on-chain — one 0–100 value a day, only the band disclosed.**
 
@@ -24,10 +24,10 @@ score is **sensitive, medical-adjacent data**. Two forces pull in opposite direc
 Put the record on a public chain and you solve the first while destroying the
 second.
 
-## What SADAKO does
+## What OHAYO! does
 
 A partner company computes one **0–100 condition value per worker per day**.
-SADAKO takes it from there and puts **only the three-state band** on Midnight:
+OHAYO! takes it from there and puts **only the three-state band** on Midnight:
 
 | Value | Band | Meaning |
 |---|---|---|
@@ -90,7 +90,7 @@ unregistered wallet shows its key hash for `ADMIN_WALLET_KEY_HASHES`.
 The roster starts empty — create a ring and a worker (id `worker-1`) from
 データ管理 as `admin` and assign the ring. Log in as `worker-1` and send a score
 (0–100) from the **リング同期** card; it goes straight to the partner mock, not to
-SADAKO. Back as `admin`, press **パートナーから取得** and then **チェーンへ送信** —
+OHAYO! Back as `admin`, press **パートナーから取得** and then **チェーンへ送信** —
 this proves and submits a real transaction. The verify button in the UI
 reconciles the local copy against the deployed contract for real.
 
@@ -188,7 +188,7 @@ must stay private.
 
 | Stage | Scope |
 |---|---|
-| Now | Contract + ZK tests, ingester, role-scoped read API, dashboard, local devnet end-to-end; the contract is deployed on Midnight preprod ([runbook](docs/deploy_preprod.md)) |
+| Now | Contract + ZK tests, ingester, role-scoped read API, dashboard, local devnet end-to-end; the contract is deployed on Midnight preprod ([runbook](docs/deploy_preprod.md)); hosting on Cloudflare workers.dev with on-demand containers is built ([runbook](docs/deploy_cloudflare.md)) |
 | Next | Partner HTTP source in place of the manual feed; salt rotation on the `salt_epochs` schema already in the DB |
 | Then | **Partner-signed values verified inside the circuit** — removes the operator from the trust base, the one remaining gap in the threat model |
 | Later | Hosted demo on the preprod contract; a worker-facing mobile view; site-level aggregate statistics proven in ZK without per-worker disclosure |

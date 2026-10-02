@@ -1,9 +1,10 @@
-# SADAKO — 設計ドキュメント
+# OHAYO! — 設計ドキュメント
 
 > 別会社が算出した作業現場のコンディション値を Midnight ブロックチェーンに記録し、
 > 権限に応じて 3 状態を参照させるシステム。**このドキュメントが現行リポジトリの正本仕様。**
 >
-> **ハッカソン構成** — すべてローカルで動作する。クラウドデプロイ先は無い。
+> **ハッカソン構成** — ローカル（libSQL とローカルの Midnight devnet、`run.sh e2e`）でも、
+> Cloudflare の workers.dev（D1 と Containers、Midnight preprod、[`deploy_cloudflare.md`](deploy_cloudflare.md)）でも動く。
 > ロールは 管理者 / ユーザー の 2 種。現場は 1 か所を前提とし、
 > ログインは Midnight ウォレットの署名（またはゲスト用サンドボックス）。
 
@@ -90,7 +91,7 @@ Midnight のゼロ知識証明が「生値を隠したままバンドの導出�
 
 | コンポーネント | 信頼の前提 |
 |---|---|
-| 別会社 | 算出値が正しいことを前提とする。値には別会社の Ed25519 署名が付き、SADAKO が取得するときにオフチェーンで検証する。回路ではまだ検証しない |
+| 別会社 | 算出値が正しいことを前提とする。値には別会社の Ed25519 署名が付き、OHAYO! が取得するときにオフチェーンで検証する。回路ではまだ検証しない |
 | 管理者（サーバー / DB オーナー） | オンボーディングの起点 — リングと作業員を作り、両者を紐づける。ロスターを正しく維持し、別会社の値を**改変せず**提出すると信頼する。チェーンが保証するのは「提出後の改ざん不可」「否認不可」であって、提出時点のソース認証ではない |
 | 作業員の帰属 | **運営者の主張であって暗号的な束縛ではない**。チェーンに載るのは `entryKey` ＋ band ＋ commitment のみ。どのリング・作業員のエントリかは運営者の DB 由来 |
 | ログイン | 一度限りのチャレンジへのウォレット署名。管理者の一覧は運用者の設定、作業員の紐付けは管理者が発行した招待コードによるので、ウォレットが誰のものかは運用者の主張にとどまる。ゲスト入場を有効にすると、誰でもサンドボックスに入れる |
@@ -176,7 +177,7 @@ Docker で起動する。`submissions` 行に実際の `tx_id` / `tx_hash` / `bl
 
 ```
 POST /api/auth/challenge {inviteCode?}   → { challengeId, message }   （一度限り、5 分）
-   message = SADAKO-LOGIN-V1 \n origin \n challengeId \n nonce \n issuedAt [\n invite:<コードの sha256>]
+   message = OHAYO-LOGIN-V1 \n origin \n challengeId \n nonce \n issuedAt [\n invite:<コードの sha256>]
 wallet.signData(message, { encoding: 'text', keyType: 'unshielded' })
 POST /api/auth/verify {challengeId, data, signature, verifyingKey}
    data === message、
@@ -238,8 +239,9 @@ entryKey = SHA-256( utf8(ringId) || be_u64(periodStartMs) || salt )  の先頭 3
 
 ### 4.2 オフチェーン DB（`@midnight-demo/db`）
 
-libSQL（ローカル SQLite ファイル or docker の libSQL サーバ）。スキーマは
-`packages/db/migrations/0001_condition_schema.sql` の 1 ファイル。
+ローカルでは libSQL（ローカル SQLite ファイル or docker の libSQL サーバ）、ホスティング時は
+Cloudflare D1（`@midnight-demo/db/d1`）。スキーマは `packages/db/migrations/0001_condition_schema.sql`
+から始まり、最初のホスティング以降の変更は同じディレクトリの番号付きファイルになる。
 
 #### リングと作業員
 
@@ -530,8 +532,8 @@ JSON                    { range, rings: [{ ringId, timezone,
 - ログインは **Lace で接続してログイン**（作業員は初回だけ招待コードを入れる）。ゲスト入場が
   有効なら **ゲストとして試す** もある。ゲスト用のバーで作業員と管理者の役を切り替えられる。
   データ管理画面で招待コードの発行（一度だけ表示）とウォレット連携の解除ができる。
-- リング同期カードは、ブラウザから別会社（`PUBLIC_PARTNER_URL`）へ直接送る。SADAKO は経由
-  しない。値が SADAKO に届くのは管理者が取得したとき。gateway は CSP の `connect-src` に
+- リング同期カードは、ブラウザから別会社（`PUBLIC_PARTNER_URL`）へ直接送る。OHAYO! は経由
+  しない。値が OHAYO! に届くのは管理者が取得したとき。gateway は CSP の `connect-src` に
   別会社のオリジンを加える。
 - 「照合」ボタンは `POST /api/reconcile` を叩く。devnet 接続時は実際に
   チェーンから読み戻して `chain_verified_at` を更新する。バンドが食い違えば

@@ -1,9 +1,9 @@
 ---
-name: sadako-demo
-description: Run and present SADAKO — the worksite worker-condition system on Midnight. Use to demo the app (bring up the local devnet, deploy the contract, walk the two roles, show on-chain verification and the tamper-detection story), or to verify the repo (tests / typecheck / Compact contract + ZK-circuit tests). The host has no Node; everything runs in a throwaway Docker container via ./run.sh (run.ps1 / run.bat on Windows).
+name: ohayo-demo
+description: Run and present OHAYO! — the worksite worker-condition system on Midnight. Use to demo the app (bring up the local devnet, deploy the contract, walk the two roles, show on-chain verification and the tamper-detection story), or to verify the repo (tests / typecheck / Compact contract + ZK-circuit tests). The host has no Node; everything runs in a throwaway Docker container via ./run.sh (run.ps1 / run.bat on Windows).
 ---
 
-SADAKO records a partner-computed **0–100 worker condition value** on the Midnight
+OHAYO! records a partner-computed **0–100 worker condition value** on the Midnight
 `condition-registry` contract. The raw value stays private (committed as a ZK
 witness); only the three-state band `正常` / `要注意` / `危険` is disclosed
 on-chain, keyed by a salted hash of the ring id and the day. A role-scoped read
@@ -13,9 +13,10 @@ Midnight wallet signature — or, locally, a guest sandbox.
 Design: [`docs/worksite_condition_system.md`](../../../docs/worksite_condition_system.md)
 ([日本語](../../../docs/ja/worksite_condition_system.md)).
 
-Everything runs locally — libSQL/SQLite plus a local Midnight devnet. There is no
-cloud deployment target, and the dashboard **always** runs against a real deployed
-contract — there is no offline/sample-data mode. **The host has no Node/npm**:
+Locally everything runs on libSQL/SQLite plus a local Midnight devnet; the hosted
+demo runs on Cloudflare workers.dev against Midnight preprod (`run.sh cloudflare`,
+`docs/deploy_cloudflare.md`). Either way the dashboard **always** runs against a real
+deployed contract — there is no offline/sample-data mode. **The host has no Node/npm**:
 every command goes through `./run.sh`, which does the work inside a throwaway
 `node:22-bookworm` container with the repo bind-mounted. `run.ps1` is a native
 Windows port (Docker Desktop only, no Git Bash / WSL) and `run.bat` is its cmd.exe
@@ -88,7 +89,7 @@ at most 3 times.
 
 - Their own day's band, and **the raw 0–100 number next to it**.
 - The **リング同期** card: enter a score (0–100); **パートナーへ送信** posts it straight
-  from the browser to the partner mock (not through SADAKO). It reaches SADAKO only when the admin presses パートナーから取得, and the
+  from the browser to the partner mock (not through OHAYO!). It reaches OHAYO! only when the admin presses パートナーから取得, and the
   chain after チェーンへ送信. One entry per ring per day — a second send for a day
   already on chain shows as スキップ · この日は記録済み. Open the dashboard as
   `http://localhost:8787` (the partner's CORS allows only that origin).
@@ -165,12 +166,13 @@ bash ./run.sh db             # ingester end-to-end vs a real libSQL server conta
 
 | Lane | What it does |
 |---|---|
-| `test` | `npm run test` + `tsc --noEmit` for `@midnight-demo/{shared,db,condition-read,ingester-core,ingester,gateway,partner-mock}` |
-| `test_sdk` | `tsc --noEmit` + static tests for `@midnight-demo/{midnight-chain,condition-cli}`. Pulls the full Midnight SDK into `mn-condition-sdk-node-modules` (minutes on first run). No proof server / wallet / chain. |
+| `test` | `npm run test` + `tsc --noEmit` for `@midnight-demo/{shared,db,condition-read,ingester-core,ingester,gateway,partner-mock,worker}` |
+| `test_sdk` | `tsc --noEmit` + static tests for `@midnight-demo/{midnight-chain,condition-cli,chain-runner}`. Pulls the full Midnight SDK into `mn-condition-sdk-node-modules` (minutes on first run). No proof server / wallet / chain. |
 | `test_contract` | `compactc` 0.31.1 (fixed release, sha256-verified, cached in `mn-compact-toolchain`) compiles `condition-registry.compact` → `src/managed/`, then vitest + typecheck. Covers all three bands, the boundaries (60/59/40/39), duplicate-`entryKey` rejection, commitment mismatch (tampered value and tampered nonce), and the `recordedAt` day window. No proof generation, no chain. |
 | `db` | ingester vs a real `ghcr.io/tursodatabase/libsql-server` container on a private network: `seed --sample` → `record --local` → `plan` (expects 2 already-submitted) |
 | `devnet` | just the compose stack, no app work |
-| `deploy_preprod [wallet\|funding\|deploy\|status]` | deploy `condition-registry` to Midnight **preprod** with the wallet in `.env.preprod` (not `.env`); starts its own proof server. A new wallet's first `deploy` takes ~70 min (DUST wallet sync). Runbook: `docs/deploy_preprod.md`. Needs the user to request tNIGHT from the faucet (CAPTCHA) |
+| `deploy_preprod [wallet\|funding\|| `cloudflare [check|plan|deploy|checkpoint|status|tail|destroy|all]` | host the demo on workers.dev: all declared in the Alchemy stack `apps/worker/alchemy.run.ts`. `check` (the default) typechecks and builds the chain-runner image without an account; `destroy` removes everything; the other steps read `.env.cloudflare`.|status]` | deploy `condition-registry` to Midnight **preprod** with the wallet in `.env.preprod` (not `.env`); starts its own proof server. A new wallet's first `deploy` takes ~70 min (DUST wallet sync). Runbook: `docs/deploy_preprod.md`. Needs the user to request tNIGHT from the faucet (CAPTCHA) |
+| `cloudflare [check\|plan\|deploy\|checkpoint\|status\|tail\|destroy\|all]` | host the demo on workers.dev: Worker `ohayo` + D1 + R2 + two on-demand containers (chain runner, proof server) and Worker `ohayo-partner`, all declared in the Alchemy stack `apps/worker/alchemy.run.ts`. `check` (the default) typechecks the stack and builds the chain-runner image without an account; `plan` previews, `deploy` creates or updates, `destroy` removes everything after a confirmation; the other steps read `.env.cloudflare`. Runbook: `docs/deploy_cloudflare.md`. After `deploy`, only the hosted container uses the preprod operating wallet |
 | `down` / `clean` | stop containers / also delete the `mn-condition-*` volumes |
 
 There is no standalone `dashboard` lane — `e2e` deploys and serves it in one
@@ -221,8 +223,9 @@ Read these before editing anything here.
   the SDK, libSQL, or a Node built-in.
 - **Licensing.** Apache-2.0 (`LICENSE`, `NOTICE`, and a `license` field in every
   `package.json`). Keep new workspaces consistent — the Buildathon rules require it.
-- Schema changes go straight into the single migration
-  `packages/db/migrations/0001_condition_schema.sql`; there is no history to preserve.
+- Schema changes are new numbered files in `packages/db/migrations/` (the hosted D1
+  holds data; `run.sh cloudflare deploy` applies new files); `0001_condition_schema.sql` is
+  frozen. A local e2e database made before a change is recreated by the next `run.sh e2e`.
 
 ---
 

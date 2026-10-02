@@ -1,4 +1,4 @@
-# SADAKO — 次フェーズ設計
+# OHAYO! — 次フェーズ設計
 
 > 2026-09-30 に合意した設計。**フェーズごとに実装中（進捗は §11）。** フェーズ 6 が入った時点で、
 > [`worksite_condition_system.md`](worksite_condition_system.md) と `AGENTS.md` の
@@ -16,7 +16,7 @@
 | # | 機能 | 決定 |
 |---|---|---|
 | 1 | 相手側のダミーサーバー | `apps/partner-mock/` を新設。ストレージは独立、fetch 形のハンドラ（ローカルは Node、ホスト時は別 Worker） |
-| 2 | ユーザー画面 → ダミーサーバー | ブラウザから partner へ**直接** POST する。SADAKO はこの経路に入らない |
+| 2 | ユーザー画面 → ダミーサーバー | ブラウザから partner へ**直接** POST する。OHAYO! はこの経路に入らない |
 | 3 | 管理画面の「データ取得」ボタン | `POST /api/partner/pull` → 署名検証・冪等性を保って `condition_readings` に `pending` で投入 |
 | 4 | コントラクトのデプロイと手順書 | Midnight **preprod** に開発ホストからデプロイ。手順書は `docs/deploy_preprod.md` |
 | 5 | ウォレットログイン | Lace（DApp Connector 4.x の `signData`）。トークンログインは廃止 |
@@ -26,7 +26,7 @@
 | 9 | 公開検証ページ | `/verify`。ログイン不要で、エントリは DB ではなく必ずチェーンから読む |
 | 10 | 選択的開示 | 作業員が自分の値の開示レシートを発行し、`/verify` でチェーン上のコミットメントと照合できる |
 | 11 | 画面内のデモガイド | 自動でチェックが付く 5 ステップのチェックリスト |
-| 12 | 審査期間中の運用 | 審査期間中は 2 つの Container を常時稼働（§9.10） |
+| 12 | 審査期間中の運用 | Container は必要なときだけ起動し、使わないときは止める。請求を Workers Paid の月 5 ドルに収めるため（§9.10。2026-09-30 に常時稼働から変更） |
 
 このフェーズでは `condition-registry` コントラクトを変更しない。
 
@@ -36,6 +36,12 @@
   採らない。開発ホストを止めてもデモが動く必要があるため。
 - **DB は D1。** Turso は採らない。BACCHIRI と同じく 1 つの Cloudflare アカウント内で完結させる。
 - **就業判断は DB のみに置く。** 改ざんを検知できないことは了承済み。
+- **プロダクト名は OHAYO!**（2026-10-02 に SADAKO から変更）。コード、画面、ドキュメント、Cloudflare の
+  リソース名は `ohayo` にした（Worker は `midnight-proof-ohayo` と `midnight-proof-ohayo-partner` で、
+  URL は `midnight-proof-ohayo.commun-official.workers.dev`）。submitter 鍵の導出に使う 2 つの文字列だけは旧名のまま残す
+  （`condition-registry.compact` の `"sadako:submitter:pk:"` と、`packages/midnight-chain/src/state.ts` の
+  `'sadako:submitter:sk:v1'`）。変えるとコントラクトと導出される submitter 鍵が変わり、preprod の
+  コントラクト（`1fca6b4c…`）はこの文字列でデプロイしているため。
 - **トークンログインはウォレットログインに置き換える。** ゲスト入場（機能 8）は、
   Lace を持たない評価者がデモを一通り体験できるようにするためだけに設ける。
 
@@ -44,7 +50,7 @@
 この設計書はセッション間の引き継ぎ資料を兼ねる。§11 の各フェーズは 1 セッションで終わる大きさにしてある。
 
 1. 次の順に読む: この設計書 → [`worksite_condition_system.md`](worksite_condition_system.md)
-   （現行仕様）→ `AGENTS.md` → `.claude/skills/sadako-demo/SKILL.md`。
+   （現行仕様）→ `AGENTS.md` → `.claude/skills/ohayo-demo/SKILL.md`。
 2. §11 で状態が `done` でない最初のフェーズを選び、§0.2 のうち必要な行だけを読む。
 3. フェーズが終わったら §11 の状態を更新し、実装の結果この設計書と違った点を直す。
 
@@ -52,10 +58,10 @@
 
 | 規約（記載場所） | 変わる時期 |
 |---|---|
-| 「すべてローカルで動作し、クラウドのデプロイ先はない」（`AGENTS.md`、仕様書、`SKILL.md`） | フェーズ 6 |
+| 「すべてローカルで動作し、クラウドのデプロイ先はない」（`AGENTS.md`、仕様書、`SKILL.md`） | フェーズ 6 — 完了 |
 | 「libSQL のみ。D1 も Cloudflare も使わない」（`SKILL.md`） | フェーズ 0（D1 アダプタ — 完了、`SKILL.md` 更新済み）、フェーズ 6（ホスティング） |
 | 「認証はトークンそのもの」（`AGENTS.md`、仕様書 §3、`SKILL.md`） | フェーズ 5 — 完了 |
-| 「スキーマ変更は `0001_condition_schema.sql` に直接入れる」（`SKILL.md`） | フェーズ 6 までは維持。以降は番号付き migration（§4.3） |
+| 「スキーマ変更は `0001_condition_schema.sql` に直接入れる」（`SKILL.md`） | フェーズ 6 — 完了: 最初のホスティング以降 `0001` は変更せず、以降の変更は番号付き migration（§4.3） |
 | 2 回押しの照合（`SKILL.md`、仕様書 §7.4） | フェーズ 7（§9.8）。改ざんのチェックボックスはそのまま残す |
 
 ### 0.2 参照実装 — BACCHIRI
@@ -78,32 +84,32 @@
   ```
 
   ブラウザで見る場合: `https://github.com/commun-platform/midnight_buildathons_bacchili/blob/562ad131767db99bcf0d2485d7d7edc3f0bd07bb/<path>`。
-- 移植したコードは Apache-2.0 の条件を引き継ぐ。SADAKO の `NOTICE` に、BACCHIRI が
+- 移植したコードは Apache-2.0 の条件を引き継ぐ。OHAYO! の `NOTICE` に、BACCHIRI が
   出典であることを 1 行加える。
-- BACCHIRI のコードにはコメントがあるが、SADAKO はコメントを書かない（`AGENTS.md`）。移植時に削る。
+- BACCHIRI のコードにはコメントがあるが、OHAYO! はコメントを書かない（`AGENTS.md`）。移植時に削る。
 
-| SADAKO 側 | BACCHIRI のパス（固定コミット） | 取り込むもの | SADAKO 向けの変更 |
+| OHAYO! 側 | BACCHIRI のパス（固定コミット） | 取り込むもの | OHAYO! 向けの変更 |
 |---|---|---|---|
-| Worker の設定（§8.1） | `backend/cloudflare/deployment/wrangler.jsonc` | `containers`、`durable_objects.bindings`、`exports`、`d1_databases`（`migrations_dir` 含む）、`r2_buckets`、`triggers.crons`、`ratelimits`、`assets`（`binding`、`not_found_handling`、`run_worker_first`）、`compatibility_flags` | `queues`、managed source と MCP 関連のバインディングは削除。名前は `sadako` / `sadako-partner`。Container は `ChainRunnerContainer` と `ProofServerContainer` |
-| secret のひな形 | `backend/cloudflare/deployment/.dev.vars.example` | 書き方 | SADAKO の secret 名（§8.1） |
+| Worker の設定（§8.1） | `backend/cloudflare/deployment/wrangler.jsonc` | `containers`、`durable_objects.bindings`、`exports`、`d1_databases`（`migrations_dir` 含む）、`r2_buckets`、`triggers.crons`、`ratelimits`、`assets`（`binding`、`not_found_handling`、`run_worker_first`）、`compatibility_flags` | `queues`、managed source と MCP 関連のバインディングは削除。名前は `ohayo` / `ohayo-partner`。Container は `ChainRunnerContainer` と `ProofServerContainer` |
+| secret のひな形 | `backend/cloudflare/deployment/.dev.vars.example` | 書き方 | OHAYO! の secret 名（§8.1） |
 | 証明サーバの Container（§8.1） | `backend/cloudflare/proof-gateway-worker/src/index.ts` の `class ProofServerContainer`（86 行目） | 長い `portReadyTimeoutMS` を付けた `startAndWaitForPorts`、`allowedHosts: ['srs.midnight.network']`、`interceptHttps`、`SSL_CERT_FILE`、`entrypoint` | 名前以外は変更なし |
 | チェーン実行の Container（§8.1、§8.2） | 同じファイルの `class ServerWalletContainer`（180 行目）と `walletRuntimeOutboundByHost`（500 行目: `proof.internal` → 証明サーバ、`state.internal` → R2 のチェックポイント） | `enableInternet` と `allowedHosts`（preprod の indexer / rpc）、`pingEndpoint`、安全な停止、2 つの内部向け通信先 | エンドポイントは sponsor 用ではなく `/health`、`/submit`、`/read`、`/open` |
 | secret の受け渡し | `backend/cloudflare/proof-gateway-worker/src/wallet-runtime-secrets.ts` | seed を Container のプロセス環境変数にだけ渡す | `OPERATING_WALLET_SEED`、`INGESTER_SALT_HEX`、`DEVELOPMENT_PRIVATE_STATE_PASSWORD` |
-| ウォレットのチェックポイント（§8.4） | Container 側: `backend/cloudflare/sponsor-wallet-container/src/checkpoint.ts`（seed を鍵にした `encryptCheckpoint` / `decryptCheckpoint`）、`checkpoint-restore.ts`、`checkpoint-upload.ts`、`checkpoint-cache.ts`。Worker 側: `backend/cloudflare/proof-gateway-worker/src/sponsor-checkpoint.ts`（R2 のキー、128 MiB の上限、復旧用コピー） | 仕組み全体 | R2 のキーは `sadako-wallet/preprod/checkpoint.enc`。`packages/midnight-chain/src/wallet.ts` の `persistWalletState` につなぐ |
+| ウォレットのチェックポイント（§8.4） | Container 側: `backend/cloudflare/sponsor-wallet-container/src/checkpoint.ts`（seed を鍵にした `encryptCheckpoint` / `decryptCheckpoint`）、`checkpoint-restore.ts`、`checkpoint-upload.ts`、`checkpoint-cache.ts`。Worker 側: `backend/cloudflare/proof-gateway-worker/src/sponsor-checkpoint.ts`（R2 のキー、128 MiB の上限、復旧用コピー） | 仕組み全体 | R2 のキーは `ohayo-wallet/preprod/checkpoint.enc`。`packages/midnight-chain/src/wallet.ts` の `persistWalletState` につなぐ |
 | ヘルスと同期の進捗（§8.2 `/health`） | `backend/cloudflare/sponsor-wallet-container/src/supervisor.ts`、`supervisor-health.ts`（`WalletPhase`、キャッシュしたヘルス）、`sync-progress.ts` | ウォレット SDK の子プロセスが同期している間も、キャッシュからヘルスを返す PID 1 のスーパーバイザ | 状態を `starting` / `syncing` / `ready` / `degraded` に対応させる |
 | Container のプライベートステート（§8.4） | `backend/cloudflare/sponsor-wallet-container/src/in-memory-private-state-provider.ts` | そのまま | nonce は `/submit` の応答として外に出し、`opening_ciphertext` に保存する |
 | Container イメージ | `backend/cloudflare/sponsor-wallet-container/Dockerfile` | `node:22.15.0-bookworm-slim`、ワークスペース単位の `npm ci`、prover key の存在チェック | `packages/{midnight-chain,shared,ingester-core,db,condition-read}` と、コンパイル済みの `src/managed/` を含む `contracts/condition-registry` をコピー |
 | 1 回の Cron だけが Container を動かす | `backend/cloudflare/proof-gateway-worker/src/server-wallet-work.ts`（`acquireServerWalletWarmupLease`、`nextServerWalletWork`） | リースの仕組み | 処理対象は `condition_readings` の `queued` の行 |
 | 運用プロファイル（§9.10） | `backend/cloudflare/proof-gateway-worker/src/sponsor-operating-window.ts`、`backend/cloudflare/d1-schema/migrations/0037_sponsor_wallet_on_demand.sql`、`docs/operations/sponsor_wallet_operating_hours.md` | Cron が読む D1 の 1 行、再起動のクールダウン | `always-on` / `on-demand` の 2 つだけ |
-| D1 アダプタ（§8.4） | `backend/cloudflare/proof-gateway-worker/src/storage/d1.ts`（`D1SqlDatabase`）、`storage/sql.ts` | クラスの中身 | `packages/db/src/sql.ts` にある SADAKO の `SqlDatabase` を実装する |
-| ウォレットログイン、サーバ側（§6） | `backend/cloudflare/proof-gateway-worker/src/browser-wallet-signature.ts` | `data === canonical` を確認してから、`@noble/curves/secp256k1` と `@noble/hashes/sha256` で `schnorr.verify(signature, sha256(utf8(canonical)), verifyingKey)` | SADAKO の署名メッセージ（§6） |
+| D1 アダプタ（§8.4） | `backend/cloudflare/proof-gateway-worker/src/storage/d1.ts`（`D1SqlDatabase`）、`storage/sql.ts` | クラスの中身 | `packages/db/src/sql.ts` にある OHAYO! の `SqlDatabase` を実装する |
+| ウォレットログイン、サーバ側（§6） | `backend/cloudflare/proof-gateway-worker/src/browser-wallet-signature.ts` | `data === canonical` を確認してから、`@noble/curves/secp256k1` と `@noble/hashes/sha256` で `schnorr.verify(signature, sha256(utf8(canonical)), verifyingKey)` | OHAYO! の署名メッセージ（§6） |
 | ウォレットログイン、ブラウザ側（§6） | `frontend/verification-portal/src/midnight-device.ts` の `connectBrowserWallet`（173 行目）: `window.midnight` からの検出、`apiVersion` `4.x`、`connect(networkId)`、`getConnectionStatus`、`getConfiguration` でのネットワーク確認、`signData(message, { encoding: 'text', keyType: 'unshielded' })`。`wallet-compatibility.ts`（切断・エラーの分類） | 処理の流れ | `apps/dashboard/public/` にビルド不要の素の ES モジュールとして書き直す。shielded アドレスは不要 |
 | partner の CORS（§2） | `backend/cloudflare/proof-gateway-worker/src/cors.ts` | プリフライト処理 | `PARTNER_ALLOWED_ORIGIN` だけを許可 |
-| セキュリティヘッダ | `frontend/verification-portal/public/_headers` | CSP の書き方 | SADAKO には `apps/dashboard/public/_headers` が既にある |
+| セキュリティヘッダ | `frontend/verification-portal/public/_headers` | CSP の書き方 | OHAYO! には `apps/dashboard/public/_headers` が既にある |
 | partner mock の API（§2） | `docs/implementation/mock_measurement_source_api.md` | Bearer のテスト用トークン、決定的な応答、`GET /health` | カーソル方式の `daily-scores`、Ed25519 署名 |
-| デプロイ手順書（§7） | `docs/operations/demo_runbook.md` | 順序: ウォレット → 入金 → デプロイ → `wrangler secret put` を標準入力で渡して secret を登録 | SADAKO の `condition:*` スクリプト |
-| 提出用資料（§9.11） | `docs/submission/README.md`、`evidence_matrix.md`、`judge_qa.md`、`one_page_brief.md`、`deliverables_plan.md`（評価基準） | 構成と書き方 | SADAKO の主張 |
-| 背景の理解用 | `docs/architecture/system_architecture.md`、`docs/implementation/fee_sponsorship.md`、`frontend/verification-portal/public/demo-mode.js` | — | SADAKO には手数料スポンサーも `?demo=1` モードもない |
+| デプロイ手順書（§7） | `docs/operations/demo_runbook.md` | 順序: ウォレット → 入金 → デプロイ → `wrangler secret put` を標準入力で渡して secret を登録 | OHAYO! の `condition:*` スクリプト |
+| 提出用資料（§9.11） | `docs/submission/README.md`、`evidence_matrix.md`、`judge_qa.md`、`one_page_brief.md`、`deliverables_plan.md`（評価基準） | 構成と書き方 | OHAYO! の主張 |
+| 背景の理解用 | `docs/architecture/system_architecture.md`、`docs/implementation/fee_sponsorship.md`、`frontend/verification-portal/public/demo-mode.js` | — | OHAYO! には手数料スポンサーも `?demo=1` モードもない |
 
 ---
 
@@ -113,10 +119,10 @@
 ブラウザ（フレームワークなしの SPA、Lace でログイン、またはゲスト入場）
    │  /api/*                                   │  POST /v1/measurements（ユーザー画面）
    ▼                                           ▼
-Worker sadako                                Worker sadako-partner
- ├─ Static Assets  apps/dashboard/public      ├─ D1 sadako-partner
+Worker ohayo                                Worker ohayo-partner
+ ├─ Static Assets  apps/dashboard/public      ├─ D1 ohayo-partner
  ├─ handleApi      （Node と同じコード）        └─ Ed25519 署名鍵（secret）
- ├─ D1 sadako      roster / readings /             ▲
+ ├─ D1 ohayo      roster / readings /             ▲
  │                 submissions / decisions /       │ GET /v1/daily-scores（API キー）
  │                 wallet bindings / guests        │
  ├─ Cron（1分）     キュー済みの値を処理 ────────────┘ （取得は管理者のボタン操作）
@@ -141,7 +147,7 @@ Worker sadako                                Worker sadako-partner
 ## 2. パートナーのダミーサーバー — `apps/partner-mock/`
 
 別会社の「リング → アプリ → サーバー」経路の代わり。0〜100 の算出はここが持ち、
-SADAKO は算出しない。
+OHAYO! は算出しない。
 
 | メソッド / パス | 認証 | 内容 |
 |---|---|---|
@@ -151,14 +157,14 @@ SADAKO は算出しない。
 | `GET /health` | なし | `{ ok: true }` |
 
 - **署名**: Ed25519（WebCrypto。Node 22 と Workers の両方で動く）で
-  `sadako-partner-score-v1\n{id}\n{ringId}\n{measuredAt}\n{score}` に署名する。
-  SADAKO は `PARTNER_PUBLIC_KEY` を持つ。これで仕様書の未解決事項「パートナー署名」を
+  `ohayo-partner-score-v1\n{id}\n{ringId}\n{measuredAt}\n{score}` に署名する。
+  OHAYO! は `PARTNER_PUBLIC_KEY` を持つ。これで仕様書の未解決事項「パートナー署名」を
   オフチェーンで解消する（回路での検証はまだしない）。
 - **カーソル**は `measuredAt` ではなく partner 側の単調増加する受信連番にする。
   遅れて届いた計測値を取りこぼさないため。
-- **CORS** は `PARTNER_ALLOWED_ORIGIN`（SADAKO のオリジン）だけを許可する。
-- **ストレージ**は SADAKO とは別にする。ローカルは `data/partner-mock.db`、ホスト時は
-  D1 `sadako-partner`。どちらも既存の `SqlDatabase` インターフェース経由。
+- **CORS** は `PARTNER_ALLOWED_ORIGIN`（OHAYO! のオリジン）だけを許可する。
+- **ストレージ**は OHAYO! とは別にする。ローカルは `data/partner-mock.db`、ホスト時は
+  D1 `ohayo-partner`。どちらも既存の `SqlDatabase` インターフェース経由。
 
 ---
 
@@ -166,7 +172,7 @@ SADAKO は算出しない。
 
 - ユーザーの今日（本人）画面に「リング同期」カードを追加する。スコア（0〜100）の入力欄と
   送信ボタンを置く（2026-09-30 決定: スコアは直接入力。partner の API はバイタルも受け付ける）。
-- ブラウザから `partnerUrl` へ直接 POST する。生値が SADAKO に届くのは管理者が取得した
+- ブラウザから `partnerUrl` へ直接 POST する。生値が OHAYO! に届くのは管理者が取得した
   時点で、実際のデータ経路と同じになる。
 - 変更点: `/api/me` に `ringId`（現在の `ring_worker_map`）を追加。`/api/config` に
   `partnerUrl` を追加。CSP の `connect-src` に partner のオリジンを追加（静的な
@@ -236,8 +242,9 @@ Node（ローカル devnet）では今どおりプロセス内で送信する。
 ### 4.3 スキーマの変更
 
 ホスト用の D1 ができるまで（フェーズ 6 まで）は、`packages/db/migrations/0001_condition_schema.sql`
-を直接編集する（`.claude/skills/sadako-demo/SKILL.md` にある現行の規約）。D1 にデータが
-入った後の変更は、番号付きの新しい migration ファイルにする。
+を直接編集する（`.claude/skills/ohayo-demo/SKILL.md` にある現行の規約）。D1 にデータが
+入った後の変更は、番号付きの新しい migration ファイルにする。直接の編集はフェーズ 6（キューの列と
+`chain_jobs`、§8.6）が最後。
 
 - `condition_readings`: `external_id TEXT UNIQUE`、`partner_sig TEXT`、`last_error TEXT` を追加し、
   `status` に `queued` / `failed` を追加。
@@ -298,7 +305,7 @@ SPA                                    Worker
  │◀─ { session, role, workerId } ────────────────
 ```
 
-- **メッセージ**: `SADAKO-LOGIN-V1\n{origin}\n{challengeId}\n{nonce}\n{issuedAt}`。
+- **メッセージ**: `OHAYO-LOGIN-V1\n{origin}\n{challengeId}\n{nonce}\n{issuedAt}`。
   招待コードを使うときは `invite:{code}` を加える。
 - **検証**には `@noble/curves` を使う（ペイロードの SHA-256 に対する secp256k1 BIP-340）。
   WASM 不要で Worker 上で動く。署名に資金は要らない。
@@ -366,8 +373,10 @@ auth_challenges (id TEXT PRIMARY KEY, message TEXT NOT NULL, invite_hash TEXT,
    `CONDITION_REGISTRY_CONTRACT_ADDRESS` を得る。2026-09-30 に新しいウォレットで約 70 分かかり、
    そのうち約 65 分が DUST ウォレットの同期だった。
 6. `run.sh deploy_preprod status` → 確認。
-7. Cloudflare への引き継ぎ: seed → `OPERATING_WALLET_SEED`、salt → `INGESTER_SALT_HEX`、
-   アドレス → Worker の vars。いずれも `wrangler secret put` に標準入力で渡し、画面に出さない。
+7. `run.sh cloudflare deploy` で Cloudflare に引き継ぐ（[`deploy_cloudflare.md`](deploy_cloudflare.md)）:
+   Alchemy のスタックが `.env.preprod` からニーモニック（→ Worker のシークレット
+   `OPERATING_WALLET_MNEMONIC`）、salt、プライベートステートのパスワード、コントラクトのアドレスを読むので、
+   画面に出したり手で入力したりしない。
    **これ以降、このウォレットは Container だけが使う。** submitter の鍵は seed から作られる
    （`packages/midnight-chain/src/state.ts` の `submitterSecretKeyHex`）ので、2 つのホストから
    同時に使うと DUST が競合する。
@@ -385,13 +394,13 @@ auth_challenges (id TEXT PRIMARY KEY, message TEXT NOT NULL, invite_hash TEXT,
 
 | リソース | 役割 |
 |---|---|
-| Worker `sadako` | `worker.ts`: `handleApi(request, deps) ?? env.ASSETS.fetch(request)`。Cron と Container クラスもここ |
-| D1 `sadako` | `packages/db/migrations` を `wrangler d1 migrations apply` で適用 |
+| Worker `midnight-proof-ohayo` | `worker.ts`: `handleApi(request, deps) ?? env.ASSETS.fetch(request)`。Cron と Container クラスもここ |
+| D1 `ohayo` | `packages/db/migrations` をデプロイ時に適用（実装では Alchemy のスタックが行う、§8.6） |
 | `ChainRunnerContainer` | `@midnight-demo/midnight-chain` を載せた Node イメージ。外向き通信は preprod の indexer / rpc と、Worker 経由の内部ホストだけ。審査期間外の `sleepAfter` は 10 分 |
 | `ProofServerContainer` | 公式の `proof-server:8.1.0` イメージ。起動するたびに `srs.midnight.network` から証明パラメータを取得する。審査期間外の `sleepAfter` は 2 分 |
-| R2 `sadako-wallet-state` | 暗号化したウォレット同期状態（再起動時の復元用） |
-| Worker `sadako-partner` + D1 `sadako-partner` | partner mock |
-| Secrets | `OPERATING_WALLET_SEED`、`INGESTER_SALT_HEX`、`DEVELOPMENT_PRIVATE_STATE_PASSWORD`、`SESSION_SECRET`、`OPENING_KEY`、`ADMIN_WALLET_KEY_HASHES`、`PARTNER_API_KEY`、`PARTNER_PUBLIC_KEY`（と partner の署名鍵） |
+| R2 `ohayo-wallet-state` | 暗号化したウォレット同期状態（再起動時の復元用） |
+| Worker `midnight-proof-ohayo-partner` + D1 `ohayo-partner` | partner mock |
+| Secrets | `OPERATING_WALLET_SEED`、`INGESTER_SALT_HEX`、`DEVELOPMENT_PRIVATE_STATE_PASSWORD`、`SESSION_SECRET`、`OPENING_KEY`、`ADMIN_WALLET_KEY_HASHES`、`PARTNER_API_KEY`、`PARTNER_PUBLIC_KEY`（と partner の署名鍵）。実装では seed の代わりに `OPERATING_WALLET_MNEMONIC`、`OPENING_KEY` はフェーズ 7 に回す（§8.6） |
 
 Cloudflare Containers の利用には Workers Paid プランが必要で、Container の稼働中は
 稼働時間に応じて課金される（§9.10）。
@@ -411,7 +420,7 @@ Cron が毎分 `queued` の値を拾う。`/health` が `ready` でなければ�
 UI に「ウォレット同期中」と表示する。`ready` なら件数を区切って `/submit` に渡し、
 Worker が `submissions` の行を書き込む。コントラクトの `assert(!entries.member(key))` が
 あるので、再試行しても安全。BACCHIRI はさらに Cloudflare Queues + DLQ を使っている
-（`wrangler.jsonc` の `queues`）。SADAKO では量が増えたら後から追加する。
+（`wrangler.jsonc` の `queues`）。OHAYO! では量が増えたら後から追加する。
 
 ### 8.4 必要になるリファクタ
 
@@ -461,12 +470,81 @@ Worker が `submissions` の行を書き込む。コントラクトの `assert(!
 
 ### 8.5 BACCHIRI との違い
 
-| | BACCHIRI | SADAKO |
+| | BACCHIRI | OHAYO! |
 |---|---|---|
 | tx を作る主体 | 端末が tx を作り、サーバのウォレットは DUST だけ追加（手数料スポンサー、`docs/implementation/fee_sponsorship.md`） | 運用ウォレットが submitter なので、Container が計画・証明・送信まで行う |
 | ジョブの受け渡し | Queues + DLQ + Cron | D1 の `status` 列と Cron |
 | フロントエンド | Vite でビルドし midnight-js を同梱（`frontend/verification-portal/vite.config.ts`） | ビルドなし。SPA は `connect` / `signData` を呼ぶだけ |
 | Container | 証明サーバ + サーバウォレット（`standard-2` + `standard-4`） | 証明サーバ + チェーン実行。サイズは実測して決める（§9.10） |
+
+### 8.6 フェーズ 6 での実装
+
+- **コードの置き場所。** Worker は `apps/gateway/src/worker.ts` ではなく独立したワークスペース
+  `apps/worker/`（`worker.ts`、`containers.ts`、`deps.ts`、`checkpoint-store.ts`、Alchemy のスタック `alchemy.run.ts`）にした。
+  `@cloudflare/containers`、Alchemy、Workers の型が必要で、Node の gateway に持たせたくないため。
+  `handleApi` と、Worker で動く gateway のモジュール（`@midnight-demo/gateway/{auth,chain-deps,deps,security}`）を
+  そのまま使う。コンテナイメージは `apps/chain-runner/`（`Dockerfile`、fetch 形式の `handler.ts`、
+  `server.ts`、`jobs.ts`、`checkpoint.ts`）。パートナーモックの Worker の入口は
+  `apps/partner-mock/src/worker.ts` で、同じスタックで宣言する。
+  `apps/gateway/src/boundary.test.ts` は両方の Worker の入口からたどる。
+- **コンテナの API**（§8.2 の実装）: `GET /health`（`{ running, stage }`）、
+  `POST /jobs { jobId, request }` → 202（別のジョブの実行中は 409。同じ `jobId` は `exists` として受け付ける）、
+  `GET /jobs/:id` → `RunnerJob`（`running` と段階 / `done` と `ReadingOutcome[]` / `failed` とエラー / `unknown`）、
+  `POST /read { entryKeys }`。要求に salt（`saltHex`）、ロスター、送信済みの entryKey を含めるので、
+  コンテナは salt のシークレットも DB も持たない。`/open` はレシートと一緒にフェーズ 7 に回す。
+- **キュー**（§8.3 の実装）: ホスティング時は、管理者の送信は `enqueueReadings`
+  （`apps/ingester/src/queue.ts`）で行を `queued` にする（`queued_by`、`queued_at`、`queued_tamper`）
+  だけ。`/api/config` は `submitQueued` を返す。1 分ごとの Cron は `drainQueue` を実行する。
+  実行中のジョブも処理待ちの行もなければ、コンテナに触れずに終わる。あれば `chain_jobs` に行を
+  入れ（部分一意インデックスで `running` は 1 行だけなので、重なった Cron は直列になる）、最大 10 件を
+  送り、次の回以降でジョブを確認し、`recordOutcomes`（行ごとの送信者と改ざん）の後、改ざんしていない
+  エントリを `/read` で照合する。コンテナが知らないジョブ、受け付けられなかったジョブ、90 分を超えた
+  ジョブは `lost` にして行は処理待ちのまま残す。失敗したジョブはその行をエラー付きで `failed` にする。
+  ゲストの処理待ちの行は送信上限に数える。送信キューの一覧は最新のジョブを返し、画面はその段階を表示して、
+  処理が残っている間は 15 秒ごとに更新する。ローカルの Node の gateway は同期的な送信のまま。
+- **プライベートステートと開示材料**: コンテナは LevelDB のプライベートステートを一時ディスクに置く。
+  `submissions.opening_ciphertext`（`OPENING_KEY`）は、それを必要とするレシートと一緒にフェーズ 7 に回す。
+  それまでホスティング時のエントリの nonce は保存されない。
+- **ウォレットのチェックポイント**: BACCHIRI の仕組みを丸ごとは移植していない。コンテナは（Node と同じく）
+  ジョブごとにウォレットを作り直すので、チェックポイントはウォレット同期の 3 ファイルを、シードから導いた鍵の
+  AES-256-GCM で封をしたもの（`apps/chain-runner/src/checkpoint.ts`）。ジョブの開始時にローカルになければ
+  `state.internal` 経由で R2 から戻し、ジョブのたびに保存する（1 つ前は `checkpoint.previous.enc` に残す）。
+  定期的なアップロードと同期停止からの復旧はない。止まったジョブは 90 分のタイムアウトで再試行になる。
+  最初のチェックポイントは開発機で preprod デプロイ時の同期済み状態から作る（`run.sh cloudflare checkpoint`）。
+  これで 1 時間かかる最初の同期を省く。
+- **シークレット**: ニーモニックは導出した `OPERATING_WALLET_SEED` ではなく `OPERATING_WALLET_MNEMONIC`
+  として渡す（コンテナには `DEVELOPMENT_WALLET_MNEMONIC` として渡るので `getOrCreateWalletCredentials`
+  はそのまま動く）。引き継ぎでシードを導出したり表示したりしない。ホスティング用のパートナーの鍵は
+  ローカル開発用とは別に作る。`/api/auth/*` はクライアント IP ごとに 1 分 20 回まで（`AUTH_RATE_LIMITER`）。
+- **最初のホスティングでの実行（2026-10-03）**: チェーン操作用コンテナが、どのジョブでも開始から約 2.5 分で
+  終了コード 1 で終わった。原因は、`createSubmissionService` がウォレットの作成時に `@polkadot` の RPC に
+  接続し、CPU を使い切る差分の同期（1/2 vCPU で 99 %）がイベントループを止めたため、RPC の 60 秒の待ち時間切れが
+  どこでも捕まえられない場所でエラーになったこと。修正: RPC には最初の送信時に接続し、待ち時間は 5 分にした
+  （`packages/midnight-chain/src/submission.ts`）。捕まえていないエラーは、プロセスを落とさずにジョブの失敗に
+  する（`jobs.abort`）。実測ではメモリは約 600 MB、CPU は張り付いていたので、チェーン操作用コンテナはカスタムの
+  1 vCPU・3 GiB にした（CPU は 2 倍、課金されるメモリは `standard-1` より 1/4 少ない）。証明サーバーは
+  `standard-1` のまま。どちらも終了コードと理由（`container_stopped`）を記録し、コンテナのログを送る。その後、
+  ゲストの値はコンテナが止まった状態から 3 分以内に記録された。以前の落ちた試行が既にトランザクションを
+  記録していたため、チェーンから読み戻した扱い（`tx_id` が `backfilled`）になった。
+- **パートナー**: workers.dev の Worker は別の Worker を URL で呼べないので、`midnight-proof-ohayo` はサービスバインディング
+  （`PARTNER`）で `midnight-proof-ohayo-partner` を呼ぶ。ブラウザは直接送る。CSP の `connect-src` にパートナーのオリジンを
+  入れるため、Worker がすべてのアセットにセキュリティヘッダを付ける（`run_worker_first: true`）。
+- **IaC**（2026-10-01 に決定。最初の `wrangler.jsonc` と wrangler の手順を並べたコマンドを置き換えた）:
+  Cloudflare 上のものはすべて 1 つの Alchemy v2 のスタック `apps/worker/alchemy.run.ts` で宣言する
+  （`alchemy` 2.0.0-beta.79 と `effect` 4.0.0-rc.117。rc.118 は beta.79 が読み込むモジュールの場所を
+  変えたため、バージョンを固定し、ルートの `overrides` でもそろえる）。2 つの D1 とマイグレーション、
+  R2 バケット（`forceDestroy`）、2 つの Worker のバインディング・シークレット・Cron、レート制限、2 つの
+  コンテナを含む。チェーン操作用コンテナのイメージは Alchemy が `apps/chain-runner/Dockerfile` からビルドし、
+  証明サーバーのイメージを取り込み直し、Durable Object のクラスとつなぐ。Terraform は Cloudflare
+  プロバイダがコンテナイメージをビルド・アップロードできず、Durable Object の migration に未解決の不具合が
+  あるため見送った。新しい `cf` CLI（2026-09-28 からベータ）はまだシークレットを設定できず、削除の仕組みもない。
+  `run.sh cloudflare [check|plan|deploy|checkpoint|status|tail|destroy|all]`（と `run.ps1`）がスタックを
+  Docker の中で実行し、イメージのビルドにはホストの Docker ソケットを使う。認証情報は `.env.cloudflare`
+  （API トークン、アカウント ID、workers.dev のサブドメイン）、シークレットは `.env.preprod` と生成した
+  `.state/cloudflare/secrets.env` から読む。スタックの状態は `.state/cloudflare/.alchemy/` にあり、
+  `.env.preprod` と同じくシークレットの値を平文で持つ。`destroy` は確認を求めてから `alchemy destroy` を
+  実行し、残ったコンテナイメージも消す。wrangler はチェックポイントのアップロード、`tail`、このイメージの
+  削除にだけ使う。手順書: [`deploy_cloudflare.md`](deploy_cloudflare.md)。
 
 ---
 
@@ -535,7 +613,7 @@ BACCHIRI の `docs/submission/deliverables_plan.md` では、Midnight Buildathon
   行の改ざんと照合だけ（改ざんした行は照合で元に戻る）。ショーケースの行は削除できない。
 - 上限: ゲスト 1 人あたりのチェーン送信は 3 回まで、加えて全体で 1 時間あたりの上限を設ける
   （D1 のカウンタ）。`/api/auth/*` には Workers のレート制限をかける（BACCHIRI の
-  `wrangler.jsonc` の `ratelimits`）。
+  `wrangler.jsonc` の `ratelimits`。実装ではクライアント IP ごとに 1 分 20 回、§8.6）。
 - 毎晩 D1 をショーケースのスナップショットに戻す。ゲストがチェーンに記録したエントリは残るが、
   仮名なので害はない。
 
@@ -606,7 +684,15 @@ guest_sessions (id TEXT PRIMARY KEY, worker_id TEXT NOT NULL, ring_id TEXT NOT N
 
 ### 9.10 審査期間中の運用とコスト
 
-運用プロファイルは D1 の設定で持ち、Cron が読む（BACCHIRI の `sponsor-operating-window.ts`
+**フェーズ 6 での実装（2026-09-30、費用を Workers Paid の月 5 ドルに収めると決定）: 必要なときだけ起動する。**
+2 つの Container はどちらも `standard-1`。Cron がチェーン実行側を起動するのは、処理待ちの値か実行中の
+ジョブがあるときだけ。チェーン実行側は 5 分、証明サーバは 3 分使われなければ止まる。照合はエントリを読む
+ためにチェーン実行側を起動する。1 回の送信で約 1〜2 GiB 時で、プランに含まれる 25 GiB 時に収まる。D1 の
+運用プロファイルは作っていない。代わりに最初の送信に数分かかる（起動、チェックポイントの復元、差分の同期、
+証明パラメータのダウンロード）。その段階は送信キューの画面に表示する。審査ですぐに応答させる必要が出たときの
+参考として、以下の計画を残す。
+
+運用プロファイルは D1 の設定で持ち、Cron が読む計画だった（BACCHIRI の `sponsor-operating-window.ts`
 と同じ）。審査期間中は `always-on`、それ以外は `on-demand`。証明サーバは起動するたびに
 `srs.midnight.network` から証明パラメータを取得する（BACCHIRI はポート待ちのタイムアウトを
 10 分にしている）ので、on-demand だと最初の証明まで数分かかる。審査期間中は 2 つの Container とも止めない。
@@ -629,7 +715,7 @@ Cloudflare Containers の公開料金（2026-09-30 確認、
 
 - 費用の約 9 割はメモリなので、サイズの最適化が効く。フェーズ 6 で、実行側のピーク（ウォレットの
   同期と復元）と証明サーバのメモリ使用量を実測してからサイズを決める。BACCHIRI のウォレットは
-  `standard-4` で動いているが、SADAKO より多くの役割を担っている。SADAKO でも `standard-4` が
+  `standard-4` で動いているが、OHAYO! より多くの役割を担っている。OHAYO! でも `standard-4` が
   必要だった場合は、月に約 $39 上乗せになる。
 - D1、R2、Workers のリクエスト、毎分の Cron は、デモ規模なら Workers Paid の範囲に収まる。
   Durable Object の稼働時間分は多くても数ドル。preprod の手数料は faucet の tNIGHT から作る
@@ -653,7 +739,7 @@ Cloudflare Containers の公開料金（2026-09-30 確認、
 
 | データ | このフェーズ以降の置き場所 |
 |---|---|
-| 生の 0〜100 の値 | partner の D1、SADAKO の D1（`condition_readings`）。送信時に Worker → Container を通る。R2 やログには残さない |
+| 生の 0〜100 の値 | partner の D1、OHAYO! の D1（`condition_readings`）。送信時に Worker → Container を通る。R2 やログには残さない |
 | バンド / コミットメント / entryKey | 変更なし（チェーン + D1） |
 | コミットメントの開示材料（`nonce`） | D1 に AES-GCM で暗号化して保存。外に出るのは本人が発行したレシートの中だけ |
 | 開示レシート | 発行できるのは本人だけ。受け取った人はその 1 つの値とエントリを知る |
@@ -680,7 +766,7 @@ Cloudflare Containers の公開料金（2026-09-30 確認、
 | 3 | 就業判断（機能 7） | `apps/gateway`、`apps/dashboard/public/app.js`、`0001_condition_schema.sql` | 理由必須のルールと、追記のみの挙動をテスト済み | 完了（2026-09-30）— ローカル devnet の画面でも、理由なしの拒否・記録・訂正を確認 |
 | 4 | preprod へのデプロイと手順書（機能 4） | `docs/deploy_preprod.md`、`docs/ja/deploy_preprod.md`、`run.sh`、`run.ps1` | 手順書だけを見て preprod にデプロイできる | 完了（2026-09-30）— 手順書に書いたレーンでデプロイし、その実行結果を手順書に記録した |
 | 5 | ウォレットログインとゲスト入場（機能 5、8） | `apps/gateway/src/auth.ts`、`apps/dashboard/public/`、テスト | トークンログインを廃止。チャレンジの再利用、期限切れ、鍵の不一致、招待コードの再利用が拒否され、ゲストの制限が効くことをテスト済み | 完了（2026-09-30）— ゲストの流れはローカル devnet の画面で確認。接続仕様の `midnight_signed_message:` 接頭辞に対応したうえで、実物の Lace ウォレットでの管理者ログインにも成功 |
-| 6 | Worker + D1 + Container（機能 6） | `apps/gateway/src/worker.ts`、`wrangler.jsonc`、Container イメージ、チェックポイントの移植（§0.2） | 開発ホストを止めた状態で、workers.dev 上で一連の流れが動く。§9.10 用のメモリを実測済み | 未着手 |
+| 6 | Worker + D1 + Container（機能 6） | `apps/worker/`、`apps/chain-runner/`、`apps/partner-mock/src/worker.ts`、`run.sh cloudflare`（§8.6） | 開発ホストを止めた状態で、workers.dev 上で一連の流れが動く。§9.10 用のメモリを実測済み | 実装とローカルでの確認まで完了（2026-09-30）: 単体テスト、2 つの Worker のバンドル、コンテナイメージのビルド（`run.sh cloudflare check`）。2026-10-02 に `run.sh cloudflare deploy` と `checkpoint` で `https://midnight-proof-ohayo.commun-official.workers.dev` にデプロイ済み（D1 はマイグレーション済み、チェックポイントは R2）。2026-10-03 にゲストの値がリング同期 → 取得 → キュー → チェーン操作用コンテナを経て、チェーンで照合済みの preprod のエントリになった。実測はメモリ約 600 MB で CPU が張り付いたので、チェーン操作用コンテナは 1 vCPU・3 GiB（§8.6）。ホスティングしたサイトで管理者の Lace ログインも確認 |
 | 7 | 評価レイヤー: 公開検証、開示レシート、デモガイド、照合と改ざんの UX、ショーケース投入、審査用プロファイル（機能 9〜12） | `apps/gateway`、`apps/dashboard/public/`、`apps/development/condition-cli` | ゲストが workers.dev 上でゴールデンパスを 5 分で終えられる | 未着手 |
 | 8 | 提出用資料と動画（§9.11） | `docs/submission/`、`docs/ja/submission/`、`README.md` | Evidence Matrix のすべての主張が、ソース・テスト・tx のいずれかにたどり着ける | 未着手 |
 

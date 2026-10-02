@@ -11,7 +11,8 @@
     "./partner": "./src/partner.ts",
     "./sources": "./src/sources.ts",
     "./store": "./src/store.ts",
-    "./submit": "./src/submit.ts"
+    "./submit": "./src/submit.ts",
+    "./queue": "./src/queue.ts"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json --noEmit",

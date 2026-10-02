@@ -16,6 +16,7 @@ import {
 import { schnorr } from '@noble/curves/secp256k1';
 
 import type { AuthConfig } from './auth.js';
+import { enqueueStagedWith } from './chain-deps.js';
 import type { GatewayDeps, SubmitStagedOptions } from './deps.js';
 import { handleApi } from './routes.js';
 import { signSession } from './session.js';
@@ -105,7 +106,7 @@ test('the challenge names the origin and is signed as-is', async () => {
   const { call } = await setup();
   const { body } = await call('POST', '/api/auth/challenge', {});
   const lines = body.message.split('\n');
-  assert.equal(lines[0], 'SADAKO-LOGIN-V1');
+  assert.equal(lines[0], 'OHAYO-LOGIN-V1');
   assert.equal(lines[1], ORIGIN);
   assert.equal(lines[2], body.challengeId);
   assert.equal(lines.length, 5);
@@ -299,4 +300,43 @@ test('a guest gets a fresh worker and ring, can switch persona, and the sandbox 
   await db.execute("UPDATE guest_sessions SET expires_at = '2000-01-01T00:00:00.000Z'");
   assert.equal((await call('GET', '/api/me', undefined, back.session)).status, 401);
   assert.equal((await call('POST', '/api/auth/guest/persona', { role: 'admin' }, back.session)).status, 401);
+});
+
+test('hosted queue mode: submit queues readings, a guest counts its queued readings, and the list shows the chain job', async () => {
+  const { call, db, deps, adminSession } = await setup({ guestEntry: true, guestSubmissionLimit: 2, guestHourlyLimit: 30 });
+  deps.submitStaged = enqueueStagedWith(db);
+  deps.config = { submitQueued: true };
+  assert.equal((await call('GET', '/api/config')).body.submitQueued, true);
+
+  const guest = (await call('POST', '/api/auth/guest', {})).body;
+  const admin = (await call('POST', '/api/auth/guest/persona', { role: 'admin' }, guest.session)).body;
+  const ring = `ring-${guest.workerId}`;
+  const reading = `INSERT INTO condition_readings (ring_id, recorded_at, value, source, status, created_at)
+                   VALUES (?, ?, 50, 'partner_api', 'pending', ?)`;
+  for (const day of ['2026-09-28', '2026-09-29', '2026-09-30']) {
+    await db.execute(reading, [ring, `${day}T08:00:00Z`, `${day}T08:00:00Z`]);
+  }
+  await db.execute(reading, ['ring-1', '2026-09-30T08:00:00Z', '2026-09-30T08:00:00Z']);
+
+  const first = await call('POST', '/api/staged/submit', { tamper: true }, admin.session);
+  assert.deepEqual([first.status, first.body.queued], [200, 2]);
+  const queued = await db.all<{ ring_id: string; queued_by: string; queued_tamper: number }>(
+    "SELECT ring_id, queued_by, queued_tamper FROM condition_readings WHERE status = 'queued'",
+  );
+  assert.equal(queued.length, 2);
+  assert.ok(queued.every((r) => r.ring_id === ring && r.queued_by === `guest:${guest.workerId.slice(6)}` && Number(r.queued_tamper) === 1));
+  const capped = await call('POST', '/api/staged/submit', {}, admin.session);
+  assert.deepEqual([capped.status, capped.body.code], [429, 'guest_limit']);
+
+  const all = await call('POST', '/api/staged/submit', {}, adminSession);
+  assert.equal(all.body.queued, 2);
+  await db.execute(
+    "INSERT INTO chain_jobs (id, reading_ids, status, stage, started_at) VALUES ('job-1', '[1,2]', 'running', 'syncing', '2026-09-30T09:00:00Z')",
+  );
+  const listed = (await call('GET', '/api/staged', undefined, adminSession)).body;
+  assert.deepEqual(
+    { id: listed.job.id, status: listed.job.status, stage: listed.job.stage, readings: listed.job.readings },
+    { id: 'job-1', status: 'running', stage: 'syncing', readings: 2 },
+  );
+  assert.ok(listed.rows.every((r: { status: string }) => r.status === 'queued'));
 });

@@ -10,7 +10,7 @@ function connectSrc(headers: Record<string, string>): string {
   return directive;
 }
 
-test('connect-src allows only the SADAKO origin without a partner', () => {
+test('connect-src allows only the OHAYO! origin without a partner', () => {
   assert.equal(connectSrc(securityHeaders()), "connect-src 'self'");
 });
 
@@ -20,8 +20,8 @@ test('connect-src adds exactly the partner origin, never its path', () => {
     "connect-src 'self' http://localhost:8788",
   );
   assert.equal(
-    connectSrc(securityHeaders('https://sadako-partner.example.workers.dev')),
-    "connect-src 'self' https://sadako-partner.example.workers.dev",
+    connectSrc(securityHeaders('https://ohayo-partner.example.workers.dev')),
+    "connect-src 'self' https://ohayo-partner.example.workers.dev",
   );
 });
 

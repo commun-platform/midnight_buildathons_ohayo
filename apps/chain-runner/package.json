@@ -1,0 +1,26 @@
+{
+  "name": "@midnight-demo/chain-runner",
+  "version": "0.1.0",
+  "private": true,
+  "license": "Apache-2.0",
+  "type": "module",
+  "scripts": {
+    "start": "tsx src/server.ts",
+    "checkpoint": "node ../../scripts/require-development-host.mjs && tsx src/cli.ts",
+    "typecheck": "node ../../scripts/require-development-host.mjs && tsc -p tsconfig.json --noEmit",
+    "test": "node ../../scripts/require-development-host.mjs && tsx --test src/*.test.ts"
+  },
+  "dependencies": {
+    "@midnight-demo/ingester-core": "*",
+    "@midnight-demo/midnight-chain": "*",
+    "@midnight-demo/shared": "*",
+    "tsx": "^4.23.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^6.0.3"
+  },
+  "engines": {
+    "node": ">=22.15.0"
+  }
+}

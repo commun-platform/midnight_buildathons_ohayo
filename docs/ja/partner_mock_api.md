@@ -4,7 +4,7 @@
 
 `apps/partner-mock/` は、別会社の「リング → アプリ → サーバー」経路の代わり。0〜100 の
 スコアはここが持つ。バイタルからスコアを算出し、**自分専用の** DB に保存し、渡すスコアには
-すべて署名する。SADAKO の DB には触れない。SADAKO はここから取得する（データ管理画面の
+すべて署名する。OHAYO! の DB には触れない。OHAYO! はここから取得する（データ管理画面の
 **パートナーから取得** ボタン、`POST /api/partner/pull`）。
 
 ハンドラは fetch 形（`apps/partner-mock/src/handler.ts` の `handlePartner(request, deps)`）
@@ -41,7 +41,7 @@ score = 30 · clamp01(sleepHours / 8)
 
 を小数第 2 位に丸める。睡眠 8 時間、HRV 80 ms 以上、心拍 55 bpm 以下、SpO₂ 98 % 以上、
 体温の偏差なしで 100 になる。`score` を直接送った場合も小数第 2 位に丸める。式は説明用で、
-SADAKO はこの式に依存しない。
+OHAYO! はこの式に依存しない。
 
 `POST /v1/simulate` はバイタルを使わない。スコアは
 `20 + (SHA-256("ringId|date") の先頭 2 バイト mod 8001) / 100`、id は `sim-<ringId>-<date>`、
@@ -66,21 +66,21 @@ SADAKO はこの式に依存しない。
 - **署名。** 次の文字列の UTF-8 バイト列に対する Ed25519 署名。
 
   ```
-  sadako-partner-score-v1\n{id}\n{ringId}\n{measuredAt}\n{score}
+  ohayo-partner-score-v1\n{id}\n{ringId}\n{measuredAt}\n{score}
   ```
 
   `{score}` は JavaScript の `String(score)`。定義は `packages/shared/src/partner.ts` の
-  `partnerScoreMessage` と `verifyPartnerScore` の 1 か所だけで、mock の署名にも SADAKO の
+  `partnerScoreMessage` と `verifyPartnerScore` の 1 か所だけで、mock の署名にも OHAYO! の
   検証にも使う（WebCrypto なので Node 22 でも Workers でも動く）。
 - **`keyId`** は、公開鍵（raw）の SHA-256 の先頭 16 桁（hex）。
 
-## SADAKO がページをどう扱うか
+## OHAYO! がページをどう扱うか
 
 `apps/ingester/src/partner.ts` の `pullPartnerScores`:
 
 1. 保存済みのカーソル（`partner_sync`、source は `partner_api`）を読み、空のページが返るまで
    ページを取得する。
-2. `keyId` が SADAKO の固定した鍵（`PARTNER_PUBLIC_KEY`）と違う場合や、partner が HTTP エラーを
+2. `keyId` が OHAYO! の固定した鍵（`PARTNER_PUBLIC_KEY`）と違う場合や、partner が HTTP エラーを
    返した場合は、カーソルを進めずに取得全体を失敗させる。
 3. 1 件ずつ判定する: 署名が不正 → `badSignature`。0..100 の外、または時刻が読めない →
    `invalid`。リングが `rings` にない → `unknownRing`。同じ `external_id` が同じリング・時刻・
@@ -101,13 +101,13 @@ npm run keygen -w @midnight-demo/partner-mock
 で `PARTNER_SIGNING_KEY`（PKCS#8、base64）、`PARTNER_PUBLIC_KEY`（raw、hex）と、ランダムな
 `PARTNER_API_KEY` を表示する。
 
-| 変数 | partner mock | SADAKO の gateway |
+| 変数 | partner mock | OHAYO! の gateway |
 |---|---|---|
 | `PARTNER_SIGNING_KEY` | 必須 | — |
 | `PARTNER_PUBLIC_KEY` | — | 取得に必須 |
 | `PARTNER_API_KEY` | 必須 | 取得に必須 |
 | `PARTNER_URL` | — | 取得に必須 |
-| `PARTNER_ALLOWED_ORIGIN` | `POST /v1/measurements` を許可する SADAKO のオリジン（既定は `http://localhost:8787`） | — |
+| `PARTNER_ALLOWED_ORIGIN` | `POST /v1/measurements` を許可する OHAYO! のオリジン（既定は `http://localhost:8787`） | — |
 | `PARTNER_DB_URL` | libSQL の URL（既定は `file:data/partner-mock.db`） | — |
 | `PARTNER_PORT` | 既定は `8788` | — |
 

@@ -1,5 +1,6 @@
 import type { SqlDatabase } from '@midnight-demo/db';
 import { PartnerPullError, pullPartnerScores } from '@midnight-demo/ingester/partner';
+import { latestChainJob } from '@midnight-demo/ingester/queue';
 import { classifyCondition } from '@midnight-demo/shared';
 
 import { authenticate, type SessionViewer } from './auth.js';
@@ -290,6 +291,7 @@ async function staged(
       ).map((r) => `${r.ring_id}|${Number(r.recorded_at_ms)}`),
     );
     return json(200, {
+      job: await latestChainJob(db),
       rows: rows.map((row) => ({
         id: row.id,
         ringId: row.ring_id,
@@ -326,12 +328,23 @@ async function staged(
 }
 
 async function guestSubmissionsLeft(db: SqlDatabase, deps: GatewayDeps, viewer: SessionViewer): Promise<number> {
-  const own = await count(db, 'SELECT COUNT(*) AS n FROM submissions WHERE submitted_by = ?', [viewer.subject]);
-  const lastHour = await count(
-    db,
-    "SELECT COUNT(*) AS n FROM submissions WHERE submitted_by LIKE 'guest:%' AND submitted_at > ?",
-    [new Date(Date.now() - 3_600_000).toISOString()],
-  );
+  const hourAgo = new Date(Date.now() - 3_600_000).toISOString();
+  const own =
+    (await count(db, 'SELECT COUNT(*) AS n FROM submissions WHERE submitted_by = ?', [viewer.subject])) +
+    (await count(db, "SELECT COUNT(*) AS n FROM condition_readings WHERE status = 'queued' AND queued_by = ?", [
+      viewer.subject,
+    ]));
+  const lastHour =
+    (await count(
+      db,
+      "SELECT COUNT(*) AS n FROM submissions WHERE submitted_by LIKE 'guest:%' AND submitted_at > ?",
+      [hourAgo],
+    )) +
+    (await count(
+      db,
+      "SELECT COUNT(*) AS n FROM condition_readings WHERE status = 'queued' AND queued_by LIKE 'guest:%' AND queued_at > ?",
+      [hourAgo],
+    ));
   const perGuest = deps.auth?.guestSubmissionLimit ?? 3;
   const perHour = deps.auth?.guestHourlyLimit ?? 30;
   return Math.min(perGuest - own, perHour - lastHour);

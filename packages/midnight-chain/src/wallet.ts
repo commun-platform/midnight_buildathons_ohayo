@@ -94,6 +94,10 @@ function deriveKeys(seed: string) {
   return derived.keys;
 }
 
+export function walletSyncDirectory(network: NetworkId, seed: string): string {
+  return path.join(stateDir, 'wallet-sync', network, walletSyncTag(seed));
+}
+
 function childStatePath(network: NetworkId, tag: string, child: ChildKind): string {
   return path.join(stateDir, 'wallet-sync', network, tag, `${child}.json`);
 }

@@ -7,7 +7,8 @@
   "exports": {
     "./handler": "./src/handler.ts",
     "./migrations": "./src/migrations.ts",
-    "./signing": "./src/signing.ts"
+    "./signing": "./src/signing.ts",
+    "./worker": "./src/worker.ts"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json --noEmit",

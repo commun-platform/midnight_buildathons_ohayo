@@ -3,7 +3,7 @@ const LS_LANG = 'wc_lang';
 
 const T = {
   ja: {
-    title: 'SADAKO', language: '言語', logout: 'ログアウト',
+    title: 'OHAYO!', language: '言語', logout: 'ログアウト',
     login_h: 'ログイン', login_p: 'Midnight ウォレット（Lace）で署名してログインします。署名に手数料はかかりません。',
     connect: 'Lace で接続してログイン', connecting: 'ウォレットで署名してください…',
     invite: '招待コード（初回のみ）', invite_ph: 'XXXX-XXXX-XXXX',
@@ -58,11 +58,14 @@ const T = {
     q_result: '送信結果', q_ok: '記録', q_skip: 'スキップ', q_fail: '失敗',
     q_tampered: 'ローカル記録とチェーンを不一致にしました（一覧で照合を 2 回押すと検知）',
     q_none: '送信待ちの値はありません。', q_source: '出所', q_status: '状態',
+    q_queued: '処理待ちにしました', q_queued_hint: 'チェーン操作用コンテナが 1 分以内に取り出して送信します（コンテナが止まっていれば起動から始まるため数分かかります）。',
+    job_running: 'チェーンへ送信中', job_done: '前回の送信が完了', job_failed: '前回の送信が失敗', job_lost: '前回の送信を中断（値は処理待ちのまま再送されます）',
+    job_readings: '件', job_refresh: '15 秒ごとに自動更新しています。',
     src_partner_api: 'パートナー', src_manual: '手入力',
     st_pending: '送信待ち', st_queued: '処理待ち', st_submitted: '記録済み', st_skipped: 'スキップ', st_failed: '失敗',
     skip_already_submitted: 'この日は記録済み', skip_unknown_ring: '未登録のリング', skip_invalid_value: '不正な値',
     sync_h: 'リング同期',
-    sync_p: 'リングのスコアを、パートナー（リングの会社）のサーバーへ直接送ります。SADAKO には管理者が取得したときに届きます。リング:',
+    sync_p: 'リングのスコアを、パートナー（リングの会社）のサーバーへ直接送ります。OHAYO! には管理者が取得したときに届きます。リング:',
     sync_score_in: 'スコア（0–100）',
     sync_send: 'パートナーへ送信', sync_sending: '送信中…',
     sync_ok: 'パートナーへ送信しました', sync_fail: 'パートナーへの送信に失敗しました',
@@ -76,7 +79,7 @@ const T = {
     dec_fail: '就業判断を記録できませんでした',
   },
   en: {
-    title: 'SADAKO', language: 'Language', logout: 'Sign out',
+    title: 'OHAYO!', language: 'Language', logout: 'Sign out',
     login_h: 'Log in', login_p: 'Sign in with your Midnight wallet (Lace). Signing costs no fee.',
     connect: 'Connect Lace and log in', connecting: 'Approve the signature in your wallet…',
     invite: 'Invite code (first time only)', invite_ph: 'XXXX-XXXX-XXXX',
@@ -131,11 +134,14 @@ const T = {
     q_result: 'Submitted', q_ok: 'recorded', q_skip: 'skipped', q_fail: 'failed',
     q_tampered: 'the local record now disagrees with the chain (press verify twice in the list to catch it)',
     q_none: 'Nothing waiting to be submitted.', q_source: 'Source', q_status: 'Status',
+    q_queued: 'Queued', q_queued_hint: 'the chain runner picks them up within a minute (a stopped container boots first, so allow a few minutes).',
+    job_running: 'Submitting to the chain', job_done: 'Last submission finished', job_failed: 'Last submission failed', job_lost: 'Last submission was interrupted (its values stay queued and are retried)',
+    job_readings: 'value(s)', job_refresh: 'Refreshing every 15 seconds.',
     src_partner_api: 'partner', src_manual: 'manual',
     st_pending: 'pending', st_queued: 'queued', st_submitted: 'recorded', st_skipped: 'skipped', st_failed: 'failed',
     skip_already_submitted: 'day already recorded', skip_unknown_ring: 'unknown ring', skip_invalid_value: 'invalid value',
     sync_h: 'Ring sync',
-    sync_p: "Sends your ring's score straight to the partner (the ring company). SADAKO receives it only when the admin pulls. Ring:",
+    sync_p: "Sends your ring's score straight to the partner (the ring company). OHAYO! receives it only when the admin pulls. Ring:",
     sync_score_in: 'Score (0–100)',
     sync_send: 'Send to partner', sync_sending: 'Sending…',
     sync_ok: 'Sent to the partner', sync_fail: 'Sending to the partner failed',
@@ -160,6 +166,7 @@ const state = {
   lang: localStorage.getItem(LS_LANG) || 'ja',
   me: null,
   cfg: { network: null, explorerUrl: null },
+  queueTimer: null,
 };
 const t = (k) => T[state.lang][k] ?? k;
 const bandOf = (b) => (b ? BAND[state.lang][b] || b : '—');
@@ -1060,8 +1067,28 @@ async function busyButton(btn, busyKey, idleKey, work) {
   }
 }
 
-function queueSection(rows) {
-  const waiting = rows.filter((r) => ['pending', 'queued', 'failed'].includes(r.status));
+function jobStatus(job) {
+  if (!job) return null;
+  const at = Date.parse(job.finishedAt || job.startedAt);
+  const when = Number.isFinite(at) ? `${fmtDay(at)} ${fmtTime(at)}` : '';
+  const detail = job.status === 'running' ? job.stage : job.error;
+  return h('p', { class: `job-status job-${job.status}` },
+    h('strong', {}, t(`job_${job.status}`)), ` · ${job.readings} ${t('job_readings')} · ${when}`,
+    detail ? h('span', { class: 'muted small' }, ` — ${detail}`) : null);
+}
+
+function scheduleQueueRefresh(active) {
+  clearTimeout(state.queueTimer);
+  if (!active) return;
+  const here = location.hash;
+  state.queueTimer = setTimeout(() => { if (location.hash === here) route(); }, 15_000);
+}
+
+function queueSection(rows, job) {
+  const queuedMode = Boolean(state.cfg.submitQueued);
+  const waiting = rows.filter((r) => (queuedMode ? ['pending', 'failed'] : ['pending', 'queued', 'failed']).includes(r.status));
+  const active = queuedMode && ((job && job.status === 'running') || rows.some((r) => r.status === 'queued'));
+  scheduleQueueRefresh(active);
   const pull = state.cfg.partnerPullEnabled
     ? h('button', { class: 'btn', type: 'button', onclick: (ev) => busyButton(ev.currentTarget, 'q_pulling', 'q_pull', async () => {
         const r = await api('/api/partner/pull', { method: 'POST', body: {} });
@@ -1076,6 +1103,10 @@ function queueSection(rows) {
   const submit = state.cfg.submitEnabled && waiting.length
     ? h('button', { class: 'btn', type: 'button', onclick: (ev) => busyButton(ev.currentTarget, 'q_submitting', 'q_submit', async () => {
         const r = await api('/api/staged/submit', { method: 'POST', body: { tamper: tamper.checked } });
+        if (r.queued !== undefined) {
+          toast(`${t('q_queued')}: ${r.queued} — ${t('q_queued_hint')}`, 'ok');
+          return;
+        }
         const summary = `${t('q_result')}: ${t('q_ok')} ${r.submitted} / ${t('q_skip')} ${r.skipped} / ${t('q_fail')} ${r.failed}`;
         if (r.tampered) toast(`${summary} — ${t('q_tampered')}`, 'warn');
         else toast(summary, r.failed ? 'err' : r.skipped ? 'warn' : 'ok');
@@ -1101,6 +1132,8 @@ function queueSection(rows) {
     h('p', { class: 'muted' }, t('q_p')),
     pull || submit ? h('div', { class: 'queue-actions' }, pull, submit) : null,
     tamperOption,
+    jobStatus(job),
+    active ? h('p', { class: 'muted small' }, t('job_refresh')) : null,
     rows.length
       ? h('div', { class: 'table-wrap' }, h('table', { class: 'feed-table' },
           h('thead', {}, h('tr', {}, ...[t('recorded'), t('ring'), t('worker'), t('band'), t('q_source'), t('q_status'), ''].map((hd) => h('th', {}, hd)))),
@@ -1124,7 +1157,7 @@ async function viewDataAdmin() {
     h('p', { class: 'muted' }, t('data_p')),
     workersSection(roster),
     ringsSection(roster),
-    queueSection(staged.rows),
+    queueSection(staged.rows, staged.job),
   );
 }
 

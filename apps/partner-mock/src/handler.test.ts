@@ -74,7 +74,7 @@ test('POST /v1/measurements scores vitals or accepts a score, and rejects bad in
   }
 });
 
-test('CORS is granted only to the configured SADAKO origin', async () => {
+test('CORS is granted only to the configured OHAYO! origin', async () => {
   const deps = await partnerDeps();
   const preflight = (origin: string, headers = 'content-type') =>
     call(deps, 'OPTIONS', '/v1/measurements', {

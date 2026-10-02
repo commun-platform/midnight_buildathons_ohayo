@@ -1,11 +1,12 @@
-# SADAKO — Design document
+# OHAYO! — Design document
 
 > Records a partner-computed worksite condition value on Midnight and serves a
 > role-scoped three-state view. **This document is the canonical spec for the
 > current repository.**
 >
-> **Hackathon build** — everything runs locally; there is no cloud deployment
-> target. Two roles (admin / worker), a single worksite, and login is a Midnight
+> **Hackathon build** — runs locally (libSQL + a local Midnight devnet, `run.sh e2e`)
+> or hosted on Cloudflare workers.dev against Midnight preprod (D1 + Containers,
+> [`deploy_cloudflare.md`](deploy_cloudflare.md)). Two roles (admin / worker), a single worksite, and login is a Midnight
 > wallet signature (or a guest sandbox).
 >
 > [日本語版](ja/worksite_condition_system.md)
@@ -93,7 +94,7 @@ are handled as `round(value × 100)` (0–10000), so the thresholds are 6000 / 4
 
 | Component | Assumption |
 |---|---|
-| Partner company | The computed value is correct. Each value is Ed25519-signed by the partner and verified off-chain when SADAKO pulls it; the circuit does not check the signature yet |
+| Partner company | The computed value is correct. Each value is Ed25519-signed by the partner and verified off-chain when OHAYO! pulls it; the circuit does not check the signature yet |
 | Admin (server / DB owner) | The onboarding root — creates rings and workers and pairs them. Trusted to keep the roster right and to submit the partner's value **unmodified**. The chain guarantees no-tampering-after-submission and non-repudiation, not source authenticity at submission time |
 | Worker attribution | **An operator claim, not a cryptographic binding.** The chain carries only `entryKey` + band + commitment; which ring or worker an entry belongs to comes from the operator's DB |
 | Login | A wallet signature over a one-time challenge. The admin list is operator configuration, and a worker's binding comes from an invite the admin issued — so who a wallet is remains an operator claim. Guest entry, when enabled, lets anyone into a sandbox |
@@ -179,7 +180,7 @@ BACCHIRI runs on preprod):
 
 ```
 POST /api/auth/challenge {inviteCode?}   → { challengeId, message }   (one-time, 5 minutes)
-   message = SADAKO-LOGIN-V1 \n origin \n challengeId \n nonce \n issuedAt [\n invite:<sha256 of the code>]
+   message = OHAYO-LOGIN-V1 \n origin \n challengeId \n nonce \n issuedAt [\n invite:<sha256 of the code>]
 wallet.signData(message, { encoding: 'text', keyType: 'unshielded' })
 POST /api/auth/verify {challengeId, data, signature, verifyingKey}
    data === message,
@@ -243,8 +244,10 @@ entryKey = first 31 bytes of SHA-256( utf8(ringId) || be_u64(periodStartMs) || s
 
 ### 4.2 Off-chain DB (`@midnight-demo/db`)
 
-libSQL (a local SQLite file or the docker libSQL server). The schema is the
-single file `packages/db/migrations/0001_condition_schema.sql`.
+libSQL (a local SQLite file or the docker libSQL server) locally, Cloudflare D1 when
+hosted (`@midnight-demo/db/d1`). The schema starts at
+`packages/db/migrations/0001_condition_schema.sql`; changes after the first hosted
+deployment are further numbered files in the same directory.
 
 #### Rings and workers
 
@@ -546,7 +549,7 @@ The Data admin screen's **Submission queue** is the UI for `/api/staged*` and
   between the worker and admin personas. The Data admin screen issues invite codes
   (shown once) and unlinks wallets.
 - The ring sync card sends from the browser to the partner (`PUBLIC_PARTNER_URL`),
-  never through SADAKO: the value reaches SADAKO only when the admin pulls. The
+  never through OHAYO! — the value reaches OHAYO! only when the admin pulls. The
   gateway adds the partner origin to the CSP `connect-src`.
 - The verify button calls `POST /api/reconcile`. Against a devnet it really reads
   the entry back and updates `chain_verified_at`. If the bands disagree, **the

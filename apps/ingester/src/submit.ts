@@ -27,10 +27,13 @@ export interface QueuedReading {
   ringId: string;
   recordedAt: string;
   value: number;
+  tamper?: boolean;
+  submittedBy?: string;
 }
 
 export interface RecordedOutcomes {
   submitted: string[];
+  confirmable: string[];
   skipped: number;
   failed: number;
   tampered: number;
@@ -83,7 +86,7 @@ export async function recordOutcomes(
   if (outcomes.length !== readings.length) {
     throw new Error(`the chain returned ${outcomes.length} outcomes for ${readings.length} readings`);
   }
-  const result: RecordedOutcomes = { submitted: [], skipped: 0, failed: 0, tampered: 0 };
+  const result: RecordedOutcomes = { submitted: [], confirmable: [], skipped: 0, failed: 0, tampered: 0 };
   for (const [index, outcome] of outcomes.entries()) {
     const reading = readings[index] as QueuedReading;
     if (outcome.status === 'skipped') {
@@ -104,15 +107,17 @@ export async function recordOutcomes(
     }
     const { submission, tx, recovered } = outcome;
     const storedBand = recovered ? submission.band : classifyCondition(reading.value);
-    if (storedBand !== submission.band) result.tampered += 1;
+    const tampered = storedBand !== submission.band;
+    if (tampered) result.tampered += 1;
     await db.batch([
-      ...submissionInserts([submissionRecord(submission, tx, storedBand, new Date().toISOString(), submittedBy)]),
+      ...submissionInserts([submissionRecord(submission, tx, storedBand, new Date().toISOString(), reading.submittedBy ?? submittedBy)]),
       {
-        sql: "UPDATE condition_readings SET status = 'submitted', skip_reason = NULL, last_error = NULL WHERE id = ?",
+        sql: "UPDATE condition_readings SET status = 'submitted', skip_reason = NULL, last_error = NULL, queued_tamper = 0 WHERE id = ?",
         parameters: [reading.id],
       },
     ]);
     result.submitted.push(submission.entryKey);
+    if (!tampered) result.confirmable.push(submission.entryKey);
   }
   return result;
 }

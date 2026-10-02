@@ -171,13 +171,14 @@ bash ./run.sh deploy_preprod status
 
 ## Handing the wallet to Cloudflare (phase 6)
 
-Not available yet — the Worker and its containers are phase 6 of
-[`next_phase_design.md`](next_phase_design.md) §11. When they exist:
+Follow [`deploy_cloudflare.md`](deploy_cloudflare.md):
 
-1. Put each secret into the Worker with `wrangler secret put`, reading from standard
-   input so nothing is echoed: the seed as `OPERATING_WALLET_SEED`, `INGESTER_SALT_HEX`,
-   and `DEVELOPMENT_PRIVATE_STATE_PASSWORD`. The contract address goes into the Worker
-   vars.
+1. `./run.sh cloudflare deploy` reads the mnemonic, `INGESTER_SALT_HEX`,
+   `DEVELOPMENT_PRIVATE_STATE_PASSWORD` and `CONDITION_REGISTRY_CONTRACT_ADDRESS` from
+   `.env.preprod` into the Alchemy stack (`apps/worker/alchemy.run.ts`); nothing is echoed
+   or typed. The mnemonic becomes the Worker secret `OPERATING_WALLET_MNEMONIC`, which only
+   the chain-runner container receives. `./run.sh cloudflare checkpoint` then uploads the
+   synced wallet state from this host.
 2. **From then on only the container uses this wallet.** The submitter key is derived
    from the seed (`submitterSecretKeyHex` in `packages/midnight-chain/src/state.ts`),
    and two hosts spending the same DUST collide. Do not run `deploy_preprod deploy`

@@ -22,7 +22,7 @@ function fileDb(): SqlDatabase {
 test('applyMigrations runs the schema once and is idempotent', async () => {
   const db = fileDb();
   const first = await applyMigrations(db, loadConditionMigrations());
-  assert.deepEqual(first, ['0001_condition_schema', '0002_guest_decisions_resettable']);
+  assert.deepEqual(first, ['0001_condition_schema', '0002_guest_decisions_resettable', '0003_queue_attempts']);
 
   const second = await applyMigrations(db, loadConditionMigrations());
   assert.deepEqual(second, []);

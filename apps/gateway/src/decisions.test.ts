@@ -174,3 +174,20 @@ test('only the admin records decisions; a worker reads only their own', async ()
   assert.equal((await decide(db, { workerId: 'worker-1', decision: 'rested', reason: 'x'.repeat(501) }))?.status, 400);
   assert.equal((await call(db, 'GET', '/api/decisions?from=2026-08-20&to=2026-08-10', 'admin'))?.status, 400);
 });
+
+test('a decision never takes the band of another holder of the ring', async () => {
+  const db = await seeded();
+  await db.execute("UPDATE ring_worker_map SET to_ts = '2026-08-20T00:00:00.000Z' WHERE ring_id = 'ring-1'");
+  await db.execute(
+    "INSERT INTO ring_worker_map (ring_id, worker_id, from_ts, to_ts) VALUES ('ring-1', 'worker-3', '2026-08-20T00:00:00.000Z', NULL)",
+  );
+
+  const later = await decide(db, { workerId: 'worker-3', decision: 'worked' });
+  assert.equal(later?.status, 201);
+  const { decision } = await json(later);
+  assert.deepEqual([decision.band, decision.entryKey], [null, null]);
+
+  const holder = await decide(db, { workerId: 'worker-1', decision: 'worked' });
+  assert.equal(holder?.status, 400);
+  assert.equal((await json(holder)).code, 'reason_required');
+});

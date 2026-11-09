@@ -239,3 +239,27 @@ test('only a wallet admin seeds the showcase; a queued deployment queues it for 
   const audit = await db.all<{ action: string }>("SELECT action FROM audit_log WHERE action = 'showcase.seed'");
   assert.equal(audit.length, 2);
 });
+
+test('deleting a worker revokes the wallet and drops unused invites', async () => {
+  const db = await bareDb();
+  const deps = { db, reader: fakeReader(new Map()), salt: SALT };
+  const call = (r: Request) => handleApi(r, deps);
+  await call(POST('/api/workers', { id: 'worker-9', name: 'W' }, ADMIN));
+  await db.execute(
+    "INSERT INTO wallet_bindings (id, key_hash, worker_id, created_at) VALUES ('wb-1', 'old-key', 'worker-9', '2026-01-01T00:00:00Z')",
+  );
+  await db.execute(
+    "INSERT INTO worker_invites (code_hash, worker_id, expires_at, created_by) VALUES ('invite', 'worker-9', '2099-01-01T00:00:00Z', 'admin')",
+  );
+
+  assert.equal((await call(DEL('/api/workers/worker-9', ADMIN)))?.status, 200);
+
+  const binding = await db.first<{ revoked_at: string | null }>("SELECT revoked_at FROM wallet_bindings WHERE id = 'wb-1'");
+  assert.ok(binding?.revoked_at);
+  assert.equal(await db.first('SELECT 1 FROM worker_invites'), null);
+  assert.ok(await db.first("SELECT 1 FROM audit_log WHERE action = 'worker.delete' AND target_id = 'worker-9'"));
+
+  await call(POST('/api/workers', { id: 'worker-9', name: 'Someone else' }, ADMIN));
+  const roster = await body(await call(GET('/api/roster', ADMIN)));
+  assert.equal(roster.workers[0].walletBound, false);
+});

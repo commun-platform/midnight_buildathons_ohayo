@@ -1,3 +1,4 @@
+import { heldAt, workerAssignments } from '@midnight-demo/condition-read';
 import type { SqlDatabase } from '@midnight-demo/db';
 import { APP_TIME_ZONE, zonedDayStartMs } from '@midnight-demo/shared';
 
@@ -82,21 +83,16 @@ async function dayEntry(
   workerId: string,
   periodStartMs: number,
 ): Promise<{ entry_key: string; band: string } | null> {
-  return db.first<{ entry_key: string; band: string }>(
-    `SELECT s.entry_key, s.band FROM submissions s
-      WHERE s.period_start_ms = ?
-        AND s.ring_id IN (
-          SELECT m.ring_id FROM ring_worker_map m
-           WHERE m.worker_id = ?
-             AND (m.to_ts IS NULL OR (m.from_ts < ? AND m.to_ts > ?)))
-      ORDER BY s.submitted_at DESC LIMIT 1`,
-    [
-      periodStartMs,
-      workerId,
-      new Date(periodStartMs + DAY_MS).toISOString(),
-      new Date(periodStartMs).toISOString(),
-    ],
+  const assignments = await workerAssignments(db, workerId);
+  const rings = [...new Set(assignments.map((a) => a.ringId))];
+  if (rings.length === 0) return null;
+  const rows = await db.all<{ entry_key: string; band: string; ring_id: string; recorded_at_ms: number }>(
+    `SELECT entry_key, band, ring_id, recorded_at_ms FROM submissions
+      WHERE period_start_ms = ? AND ring_id IN (${rings.map(() => '?').join(', ')})
+      ORDER BY submitted_at DESC`,
+    [periodStartMs, ...rings],
   );
+  return rows.find((row) => heldAt(assignments, row.ring_id, Number(row.recorded_at_ms))) ?? null;
 }
 
 async function listDecisions(db: SqlDatabase, url: URL, workerId: string | null): Promise<Response> {

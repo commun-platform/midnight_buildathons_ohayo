@@ -180,3 +180,17 @@ test('a chain that cannot be read gives 503, not a crash', async () => {
   const receipt = { v: 1, entryKey: '42', scoreCenti: 7200, nonceHex: NONCE, scoreCommitmentHex: 'ab'.repeat(32), periodDate: '2026-10-02', issuedAt: '2026-10-02T00:00:00Z' };
   assert.equal((await call('POST', '/api/public/receipt', { receipt })).status, 503);
 });
+
+test('a receipt covers only entries recorded while the worker held the ring', async () => {
+  const { call, db } = await setup();
+  await db.execute("UPDATE ring_worker_map SET to_ts = '2026-10-05T00:00:00.000Z' WHERE ring_id = 'ring-1'");
+  await db.execute(
+    "INSERT INTO ring_worker_map (ring_id, worker_id, from_ts, to_ts) VALUES ('ring-1', 'worker-2', '2026-10-05T00:00:00.000Z', NULL)",
+  );
+
+  assert.equal((await call('POST', '/api/disclosures', { entryKey: '42' }, 'worker-2')).status, 404);
+
+  const own = await call('POST', '/api/disclosures', { entryKey: '42' }, 'worker-1');
+  assert.equal(own.status, 200);
+  assert.equal(own.body.scoreCenti, 7200);
+});

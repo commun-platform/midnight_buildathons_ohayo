@@ -258,3 +258,22 @@ test('handleApi: POST /api/reconcile — auth, scope, 501/200', async () => {
   });
   assert.equal(noCap?.status, 501);
 });
+
+test('a new ring holder never sees entries recorded before they took over', async () => {
+  const { db, reader } = await seeded();
+  const deps = { db, reader, salt: SALT };
+  await db.execute("UPDATE ring_worker_map SET to_ts = '2026-08-20T00:00:00.000Z' WHERE ring_id = 'ring-1'");
+  await db.execute(
+    "INSERT INTO ring_worker_map (ring_id, worker_id, from_ts, to_ts) VALUES ('ring-1', 'worker-3', '2026-08-20T00:00:00.000Z', NULL)",
+  );
+  await db.execute(
+    `INSERT INTO condition_readings (ring_id, recorded_at, value, source, status, created_at)
+     VALUES ('ring-1', '2026-08-15T22:10:00.000Z', 78, 'partner_api', 'submitted', '2026-08-16T00:00:00.000Z')`,
+  );
+  const entriesOf = async (path: string, token: string) =>
+    (await bodyOf(await handleRead(get(`${path}${range}`, token), deps))).rings.find((r: any) => r.ringId === 'ring-1').entries;
+
+  assert.deepEqual(await entriesOf('/api/conditions/mine', 'worker-3'), []);
+  assert.deepEqual(await entriesOf('/api/conditions/worker/worker-3', 'admin'), []);
+  assert.equal((await entriesOf('/api/conditions/all', 'admin')).length, 1);
+});

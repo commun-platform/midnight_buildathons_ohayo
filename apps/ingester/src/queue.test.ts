@@ -9,7 +9,15 @@ import type { RunnerJob, RunnerSubmitRequest } from '@midnight-demo/ingester-cor
 import { hexToBytes } from '@midnight-demo/shared';
 
 import { openIngesterDb } from './db.js';
-import { drainQueue, enqueueReadings, latestChainJob, type ChainRunner } from './queue.js';
+import {
+  drainQueue,
+  enqueueReadings,
+  JOB_START_GRACE_MS,
+  latestChainJob,
+  LOST_RETRY_MS,
+  MAX_JOB_ATTEMPTS,
+  type ChainRunner,
+} from './queue.js';
 import { fakeChain } from './test-chain.js';
 
 const salt = new Uint8Array(16).fill(0x5a);
@@ -204,7 +212,10 @@ test('a job the runner no longer knows is lost and its readings are retried by t
   const lost = await drainQueue(db, runner, salt, { now: t0 });
   assert.equal(lost.action, 'lost');
   assert.deepEqual(await statuses(db), ['queued']);
-  const again = await drainQueue(db, runner, salt, { now: t0, newId: () => 'job-2' });
+  const soon = await drainQueue(db, runner, salt, { now: new Date(t0.getTime() + 60_000), newId: () => 'job-2' });
+  assert.equal(soon.action, 'backoff');
+  assert.equal(runner.requests.length, 1);
+  const again = await drainQueue(db, runner, salt, { now: new Date(t0.getTime() + LOST_RETRY_MS), newId: () => 'job-2' });
   assert.deepEqual(again, { action: 'started', jobId: 'job-2', readings: 1 });
 });
 
@@ -264,4 +275,65 @@ test('a reading deleted while its job runs is left out of the recorded outcomes'
   const r = await drainQueue(db, runner, salt, { now: t0 });
   assert.equal(r.action === 'recorded' && r.submitted, 1);
   assert.equal((await db.all('SELECT entry_key FROM submissions')).length, 1);
+});
+
+test('a job whose start is still in flight waits through the grace period, then is lost', async () => {
+  const db = await rosterDb();
+  const runner = fakeRunner();
+  await reading(db, 'ring-1', 72, '2026-08-20T08:30:00+09:00');
+  await enqueueReadings(db, {}, t0);
+  await db.execute("INSERT INTO chain_jobs (id, reading_ids, status, started_at) VALUES ('job-1', '[1]', 'running', ?)", [
+    t0.toISOString(),
+  ]);
+
+  const waiting = await drainQueue(db, runner, salt, { now: new Date(t0.getTime() + 60_000) });
+  assert.equal(waiting.action, 'waiting');
+  assert.equal((await latestChainJob(db))?.status, 'running');
+
+  const lost = await drainQueue(db, runner, salt, { now: new Date(t0.getTime() + JOB_START_GRACE_MS) });
+  assert.equal(lost.action, 'lost');
+});
+
+test('an accepted job the runner no longer knows is lost at once', async () => {
+  const db = await rosterDb();
+  const runner = fakeRunner();
+  await reading(db, 'ring-1', 72, '2026-08-20T08:30:00+09:00');
+  await enqueueReadings(db, {}, t0);
+  await drainQueue(db, runner, salt, { now: t0, newId: ids() });
+  runner.jobs.clear();
+  assert.equal((await drainQueue(db, runner, salt, { now: new Date(t0.getTime() + 60_000) })).action, 'lost');
+});
+
+test('readings fail after repeated lost jobs and can be queued again', async () => {
+  const db = await rosterDb();
+  const runner = fakeRunner();
+  runner.startJob = async () => {
+    throw new Error('503');
+  };
+  await reading(db, 'ring-1', 72, '2026-08-20T08:30:00+09:00');
+  await enqueueReadings(db, {}, t0);
+  const newId = ids();
+  for (let attempt = 0; attempt < MAX_JOB_ATTEMPTS; attempt += 1) {
+    assert.deepEqual(await statuses(db), ['queued']);
+    const r = await drainQueue(db, runner, salt, { now: new Date(t0.getTime() + attempt * LOST_RETRY_MS), newId });
+    assert.equal(r.action, 'lost');
+  }
+  assert.deepEqual(await statuses(db), ['failed']);
+  const row = await db.first<{ last_error: string; attempts: number }>('SELECT last_error, attempts FROM condition_readings');
+  assert.match(row?.last_error ?? '', /did not accept/);
+  assert.equal(Number(row?.attempts), MAX_JOB_ATTEMPTS);
+
+  assert.equal(await enqueueReadings(db, {}, t0), 1);
+  assert.equal(Number((await db.first<{ attempts: number }>('SELECT attempts FROM condition_readings'))?.attempts), 0);
+});
+
+test('a job that returns the wrong number of outcomes fails its readings', async () => {
+  const db = await rosterDb();
+  const runner = fakeRunner();
+  await reading(db, 'ring-1', 72, '2026-08-20T08:30:00+09:00');
+  await enqueueReadings(db, {}, t0);
+  await drainQueue(db, runner, salt, { now: t0, newId: () => 'job-1' });
+  runner.jobs.set('job-1', { state: 'done', outcomes: [] });
+  assert.equal((await drainQueue(db, runner, salt, { now: t0 })).action, 'failed');
+  assert.deepEqual(await statuses(db), ['failed']);
 });

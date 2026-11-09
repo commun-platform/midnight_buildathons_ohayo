@@ -1,4 +1,4 @@
-import { resolveRingScope } from '@midnight-demo/condition-read';
+import { heldAt, workerAssignments } from '@midnight-demo/condition-read';
 import {
   APP_TIME_ZONE,
   openOpening,
@@ -112,14 +112,17 @@ async function handleDisclosure(request: Request, deps: GatewayDeps): Promise<Re
   const row = await deps.db.first<{
     ring_id: string;
     period_start_ms: number;
+    recorded_at_ms: number;
     score_commitment_hex: string;
     opening_ciphertext: string | null;
   }>(
-    'SELECT ring_id, period_start_ms, score_commitment_hex, opening_ciphertext FROM submissions WHERE entry_key = ?',
+    'SELECT ring_id, period_start_ms, recorded_at_ms, score_commitment_hex, opening_ciphertext FROM submissions WHERE entry_key = ?',
     [entryKey],
   );
-  const scope = new Set(await resolveRingScope(deps.db, viewer));
-  if (!row || !scope.has(row.ring_id)) return json(404, { error: 'No such entry of yours' });
+  const assignments = await workerAssignments(deps.db, viewer.workerId);
+  if (!row || !heldAt(assignments, row.ring_id, Number(row.recorded_at_ms))) {
+    return json(404, { error: 'No such entry of yours' });
+  }
   if (!row.opening_ciphertext) {
     return json(409, { error: 'This entry has no stored opening (it was recorded before receipts existed)', code: 'no_opening' });
   }

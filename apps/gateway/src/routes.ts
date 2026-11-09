@@ -1,6 +1,9 @@
 import {
   conditionHistory,
+  heldAt,
   resolveRingScope,
+  workerAssignments,
+  type RingAssignment,
   type RingHistory,
   type Viewer,
 } from '@midnight-demo/condition-read';
@@ -63,6 +66,12 @@ function authorizeTarget(viewer: Viewer, kind: string, id: string | undefined): 
   return false;
 }
 
+function keepHeldEntries(history: RingHistory[], assignments: readonly RingAssignment[]): void {
+  for (const ring of history) {
+    ring.entries = ring.entries.filter((entry) => heldAt(assignments, ring.ringId, entry.recordedAtMs));
+  }
+}
+
 async function attachOwnConditionValues(db: SqlDatabase, history: RingHistory[]): Promise<void> {
   const rings = history.map((r) => r.ringId);
   if (rings.length === 0) return;
@@ -113,6 +122,9 @@ export async function handleRead(request: Request, deps: GatewayDeps): Promise<R
     toMs: range.toMs,
     salt: deps.salt,
   });
+
+  const holder = viewer.role === 'worker' ? viewer.workerId : kind === 'worker' ? id : null;
+  if (holder) keepHeldEntries(history, await workerAssignments(deps.db, holder));
 
   if (viewer.role === 'worker') await attachOwnConditionValues(deps.db, history);
 

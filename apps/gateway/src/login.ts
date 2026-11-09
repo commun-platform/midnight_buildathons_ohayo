@@ -5,6 +5,7 @@ import { isWalletSignature, sha256Hex, verifyWalletSignature, walletKeyHash } fr
 
 export const LOGIN_DOMAIN = 'OHAYO-LOGIN-V1';
 const CHALLENGE_MS = 5 * 60 * 1000;
+const GUEST_RING_LEAD_MS = 24 * 60 * 60 * 1000;
 const INVITE_RE = /^[A-Z2-9]{4}-[A-Z2-9]{4}-[A-Z2-9]{4}$/;
 const INVITE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 
@@ -204,7 +205,7 @@ async function guestEntry(deps: GatewayDeps, auth: AuthConfig): Promise<Response
     },
     {
       sql: 'INSERT INTO ring_worker_map (ring_id, worker_id, from_ts, to_ts) VALUES (?, ?, ?, NULL)',
-      parameters: [ringId, workerId, nowIso],
+      parameters: [ringId, workerId, new Date(now - GUEST_RING_LEAD_MS).toISOString()],
     },
     {
       sql: 'INSERT INTO guest_sessions (id, worker_id, ring_id, created_at, expires_at) VALUES (?, ?, ?, ?, ?)',

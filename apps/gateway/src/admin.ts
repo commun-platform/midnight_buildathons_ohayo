@@ -191,6 +191,7 @@ async function workers(
   method: string,
   id: string | null,
   request: Request,
+  viewer: SessionViewer,
 ): Promise<Response> {
   if (!id && method === 'POST') {
     const b = await readBody(request);
@@ -226,8 +227,18 @@ async function workers(
       [id],
     );
     if (refs > 0) return json(409, { error: 'worker is still assigned a ring' });
-    await db.execute('DELETE FROM worker_pii WHERE worker_id = ?', [id]);
-    await db.execute('DELETE FROM workers WHERE id = ?', [id]);
+    const at = now();
+    await db.batch([
+      { sql: 'UPDATE wallet_bindings SET revoked_at = ? WHERE worker_id = ? AND revoked_at IS NULL', parameters: [at, id] },
+      { sql: 'DELETE FROM worker_invites WHERE worker_id = ? AND used_at IS NULL', parameters: [id] },
+      {
+        sql: `INSERT INTO audit_log (id, actor_user_id, action, target_table, target_id, after_json, ts)
+              VALUES (?, ?, 'worker.delete', 'workers', ?, ?, ?)`,
+        parameters: [`al-${crypto.randomUUID()}`, viewer.subject, id, JSON.stringify({ workerId: id, deletedAt: at }), at],
+      },
+      { sql: 'DELETE FROM worker_pii WHERE worker_id = ?', parameters: [id] },
+      { sql: 'DELETE FROM workers WHERE id = ?', parameters: [id] },
+    ]);
     return json(200, { deleted: id });
   }
   return json(405, { error: 'Method not allowed' });
@@ -461,7 +472,7 @@ export async function handleAdmin(request: Request, deps: GatewayDeps): Promise<
   if (kind === 'workers' && id && seg[3] === 'wallet' && !seg[4]) {
     return method === 'DELETE' ? revokeWallet(db, id, viewer) : json(405, { error: 'Method not allowed' });
   }
-  if (kind === 'workers') return workers(db, method, id, request);
+  if (kind === 'workers') return workers(db, method, id, request, viewer);
   if (kind === 'staged') {
     return staged(db, deps, viewer, method, url.pathname.slice('/api/staged'.length), request);
   }

@@ -530,8 +530,11 @@ Phase 0 landed the first three items; they describe the code as built.
   one `running` row, which serialises overlapping Cron runs), posts up to 10 readings,
   polls the job on later runs, then `recordOutcomes` (per-row submitter and tamper) and
   confirms the untampered entries through `/read`. A job the container no longer knows,
-  one that is not accepted, or one that runs past 90 minutes is `lost` and its rows stay
-  queued; a job that fails marks its rows `failed` with the error. A guest's queued rows
+  one that is not accepted, or one that runs past 90 minutes is `lost`: its rows stay
+  queued and the next job waits 10 minutes. A row in three lost jobs turns `failed`, and
+  the admin can queue it again. A job the container has not yet acknowledged gets 7 minutes
+  before it can be lost, so a cold start is not mistaken for a restart. A job that fails
+  marks its rows `failed` with the error. A guest's queued rows
   count against its submission limits. The staged list returns the latest job, and the
   queue screen shows its stage and refreshes every 15 seconds while work is pending. The
   local Node gateway keeps the synchronous submit.
@@ -689,7 +692,7 @@ passes the remaining allowance as its `limit`, and a spent allowance returns 429
 ### 9.6 Disclosure receipt (selective disclosure)
 
 - On their own history a worker can issue a receipt: `POST /api/disclosures { entryKey }`
-  (the worker, own entries only — the admin cannot). The Worker decrypts
+  (the worker, only entries recorded while they held the ring — the admin cannot). The Worker decrypts
   `opening_ciphertext` and returns
   `{ v: 1, entryKey, scoreCenti, nonceHex, scoreCommitmentHex, periodDate, issuedAt }` to
   copy or download. Each issuance goes to `audit_log`.

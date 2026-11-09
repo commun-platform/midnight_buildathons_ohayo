@@ -1,4 +1,4 @@
-import type { SqlDatabase } from '@midnight-demo/db';
+import type { SqlDatabase, SqlStatement } from '@midnight-demo/db';
 import type {
   ConditionChain,
   ReadingOutcome,
@@ -29,11 +29,13 @@ export interface DrainOptions {
   newId?: () => string;
   batchSize?: number;
   timeoutMs?: number;
+  lostRetryMs?: number;
 }
 
 export type DrainResult =
   | { action: 'idle' }
   | { action: 'busy' }
+  | { action: 'backoff'; retryAt: string }
   | { action: 'started'; jobId: string; readings: number }
   | { action: 'waiting'; jobId: string; stage: string | null }
   | {
@@ -60,6 +62,9 @@ export interface ChainJobView {
 
 export const JOB_BATCH_SIZE = 10;
 export const JOB_TIMEOUT_MS = 90 * 60_000;
+export const JOB_START_GRACE_MS = 7 * 60_000;
+export const LOST_RETRY_MS = 10 * 60_000;
+export const MAX_JOB_ATTEMPTS = 3;
 
 interface QueuedRow {
   id: number;
@@ -76,11 +81,13 @@ interface JobRow {
   status: ChainJobView['status'];
   stage: string | null;
   started_at: string;
+  accepted_at: string | null;
   finished_at: string | null;
   error: string | null;
 }
 
 const QUEUED_COLUMNS = 'id, ring_id, recorded_at, value, queued_tamper, queued_by';
+const JOB_COLUMNS = 'id, reading_ids, status, stage, started_at, accepted_at, finished_at, error';
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -120,7 +127,7 @@ export async function enqueueReadings(
   await db.batch(
     picked.map((row) => ({
       sql: `UPDATE condition_readings
-               SET status = 'queued', queued_by = ?, queued_at = ?, queued_tamper = ?, last_error = NULL
+               SET status = 'queued', queued_by = ?, queued_at = ?, queued_tamper = ?, last_error = NULL, attempts = 0
              WHERE id = ? AND status IN ('pending', 'failed')`,
       parameters: [options.queuedBy ?? null, now.toISOString(), options.tamper ? 1 : 0, Number(row.id)],
     })),
@@ -128,19 +135,66 @@ export async function enqueueReadings(
   return picked.length;
 }
 
-async function finishJob(
-  db: SqlDatabase,
+function finishStatement(
   jobId: string,
   status: 'done' | 'failed' | 'lost',
   error: string | null,
   now: Date,
-): Promise<void> {
-  await db.execute('UPDATE chain_jobs SET status = ?, finished_at = ?, error = ? WHERE id = ?', [
-    status,
-    now.toISOString(),
-    error,
-    jobId,
+): SqlStatement {
+  return {
+    sql: 'UPDATE chain_jobs SET status = ?, finished_at = ?, error = ? WHERE id = ?',
+    parameters: [status, now.toISOString(), error, jobId],
+  };
+}
+
+const idMarks = (ids: readonly number[]): string => ids.map(() => '?').join(', ');
+
+async function loseJob(
+  db: SqlDatabase,
+  jobId: string,
+  ids: readonly number[],
+  error: string,
+  now: Date,
+): Promise<DrainResult> {
+  await db.batch([
+    {
+      sql: `UPDATE condition_readings SET attempts = attempts + 1
+             WHERE status = 'queued' AND id IN (${idMarks(ids)})`,
+      parameters: [...ids],
+    },
+    {
+      sql: `UPDATE condition_readings SET status = 'failed', last_error = ?
+             WHERE status = 'queued' AND attempts >= ? AND id IN (${idMarks(ids)})`,
+      parameters: [error, MAX_JOB_ATTEMPTS, ...ids],
+    },
+    finishStatement(jobId, 'lost', error, now),
   ]);
+  return { action: 'lost', jobId, error };
+}
+
+async function failJob(
+  db: SqlDatabase,
+  jobId: string,
+  ids: readonly number[],
+  error: string,
+  now: Date,
+): Promise<DrainResult> {
+  await db.batch([
+    {
+      sql: `UPDATE condition_readings SET status = 'failed', last_error = ?
+             WHERE status = 'queued' AND id IN (${idMarks(ids)})`,
+      parameters: [error, ...ids],
+    },
+    finishStatement(jobId, 'failed', error, now),
+  ]);
+  return { action: 'failed', jobId, error };
+}
+
+async function lostRetryAt(db: SqlDatabase, retryMs: number): Promise<number | null> {
+  const last = await db.first<{ status: string; finished_at: string }>(
+    'SELECT status, finished_at FROM chain_jobs WHERE finished_at IS NOT NULL ORDER BY finished_at DESC LIMIT 1',
+  );
+  return last?.status === 'lost' ? Date.parse(last.finished_at) + retryMs : null;
 }
 
 async function jobReadings(db: SqlDatabase, ids: readonly number[]): Promise<Map<number, QueuedReading>> {
@@ -168,11 +222,12 @@ async function settleJob(
     job = { state: 'running', stage: `unreachable: ${errorMessage(error)}` };
   }
 
+  const ids = readingIds(row);
+  const ageMs = now.getTime() - Date.parse(row.started_at);
+
   if (job.state === 'running') {
-    if (now.getTime() - Date.parse(row.started_at) > timeoutMs) {
-      const error = `the chain runner did not finish within ${Math.round(timeoutMs / 60_000)} minutes`;
-      await finishJob(db, row.id, 'lost', error, now);
-      return { action: 'lost', jobId: row.id, error };
+    if (ageMs > timeoutMs) {
+      return loseJob(db, row.id, ids, `the chain runner did not finish within ${Math.round(timeoutMs / 60_000)} minutes`, now);
     }
     const stage = job.stage ?? null;
     await db.execute('UPDATE chain_jobs SET stage = ? WHERE id = ?', [stage, row.id]);
@@ -180,27 +235,16 @@ async function settleJob(
   }
 
   if (job.state === 'unknown') {
-    const error = 'the chain runner restarted before the job finished; its readings stay queued';
-    await finishJob(db, row.id, 'lost', error, now);
-    return { action: 'lost', jobId: row.id, error };
+    if (!row.accepted_at && ageMs < JOB_START_GRACE_MS) {
+      return { action: 'waiting', jobId: row.id, stage: row.stage };
+    }
+    return loseJob(db, row.id, ids, 'the chain runner restarted before the job finished; its readings stay queued', now);
   }
 
-  const ids = readingIds(row);
-  if (job.state === 'failed') {
-    await db.batch(
-      ids.map((id) => ({
-        sql: "UPDATE condition_readings SET status = 'failed', last_error = ? WHERE id = ? AND status = 'queued'",
-        parameters: [job.error, id],
-      })),
-    );
-    await finishJob(db, row.id, 'failed', job.error, now);
-    return { action: 'failed', jobId: row.id, error: job.error };
-  }
+  if (job.state === 'failed') return failJob(db, row.id, ids, job.error, now);
 
   if (job.outcomes.length !== ids.length) {
-    const error = `the chain runner returned ${job.outcomes.length} outcomes for ${ids.length} readings`;
-    await finishJob(db, row.id, 'failed', error, now);
-    return { action: 'failed', jobId: row.id, error };
+    return failJob(db, row.id, ids, `the chain runner returned ${job.outcomes.length} outcomes for ${ids.length} readings`, now);
   }
   const current = await jobReadings(db, ids);
   const readings: QueuedReading[] = [];
@@ -220,7 +264,7 @@ async function settleJob(
       confirmed = 0;
     }
   }
-  await finishJob(db, row.id, 'done', null, now);
+  await db.batch([finishStatement(row.id, 'done', null, now)]);
   return {
     action: 'recorded',
     jobId: row.id,
@@ -239,9 +283,7 @@ export async function drainQueue(
   options: DrainOptions = {},
 ): Promise<DrainResult> {
   const now = options.now ?? new Date();
-  const running = await db.first<JobRow>(
-    "SELECT id, reading_ids, status, stage, started_at, finished_at, error FROM chain_jobs WHERE status = 'running'",
-  );
+  const running = await db.first<JobRow>(`SELECT ${JOB_COLUMNS} FROM chain_jobs WHERE status = 'running'`);
   if (running) return settleJob(db, runner, running, now, options.timeoutMs ?? JOB_TIMEOUT_MS, options.openingKeyHex);
 
   const rows = await db.all<QueuedRow>(
@@ -249,6 +291,11 @@ export async function drainQueue(
     [options.batchSize ?? JOB_BATCH_SIZE],
   );
   if (rows.length === 0) return { action: 'idle' };
+
+  const retryAt = await lostRetryAt(db, options.lostRetryMs ?? LOST_RETRY_MS);
+  if (retryAt !== null && now.getTime() < retryAt) {
+    return { action: 'backoff', retryAt: new Date(retryAt).toISOString() };
+  }
 
   const readings = rows.map(toReading);
   const request: RunnerSubmitRequest = {
@@ -273,16 +320,15 @@ export async function drainQueue(
   try {
     await runner.startJob(jobId, request);
   } catch (error) {
-    const message = `the chain runner did not accept the job: ${errorMessage(error)}`;
-    await finishJob(db, jobId, 'lost', message, now);
-    return { action: 'lost', jobId, error: message };
+    return loseJob(db, jobId, readings.map((r) => r.id), `the chain runner did not accept the job: ${errorMessage(error)}`, now);
   }
+  await db.execute('UPDATE chain_jobs SET accepted_at = ? WHERE id = ?', [new Date().toISOString(), jobId]);
   return { action: 'started', jobId, readings: readings.length };
 }
 
 export async function latestChainJob(db: SqlDatabase): Promise<ChainJobView | null> {
   const row = await db.first<JobRow>(
-    `SELECT id, reading_ids, status, stage, started_at, finished_at, error FROM chain_jobs
+    `SELECT ${JOB_COLUMNS} FROM chain_jobs
       ORDER BY CASE status WHEN 'running' THEN 0 ELSE 1 END, started_at DESC LIMIT 1`,
   );
   if (!row) return null;

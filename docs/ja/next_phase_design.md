@@ -499,7 +499,9 @@ Worker が `submissions` の行を書き込む。コントラクトの `assert(!
   入れ（部分一意インデックスで `running` は 1 行だけなので、重なった Cron は直列になる）、最大 10 件を
   送り、次の回以降でジョブを確認し、`recordOutcomes`（行ごとの送信者と改ざん）の後、改ざんしていない
   エントリを `/read` で照合する。コンテナが知らないジョブ、受け付けられなかったジョブ、90 分を超えた
-  ジョブは `lost` にして行は処理待ちのまま残す。失敗したジョブはその行をエラー付きで `failed` にする。
+  ジョブは `lost` にして行は処理待ちのまま残し、次のジョブまで 10 分空ける。3 回 `lost` になった行は `failed` にする
+  （管理者が再度キューに入れられる）。コンテナの受け付けがまだ確認できていないジョブは、コールドスタートを再起動と
+  取り違えないよう、開始から 7 分は `lost` にしない。失敗したジョブはその行をエラー付きで `failed` にする。
   ゲストの処理待ちの行は送信上限に数える。送信キューの一覧は最新のジョブを返し、画面はその段階を表示して、
   処理が残っている間は 15 秒ごとに更新する。ローカルの Node の gateway は同期的な送信のまま。
 - **プライベートステートと開示材料**: コンテナは LevelDB のプライベートステートを一時ディスクに置く。
@@ -642,7 +644,7 @@ guest_sessions (id TEXT PRIMARY KEY, worker_id TEXT NOT NULL, ring_id TEXT NOT N
 ### 9.6 開示レシート（選択的開示）
 
 - 作業員は自分の履歴から開示レシートを発行できる: `POST /api/disclosures { entryKey }`
-  （作業員本人の、自分のエントリだけ。管理者は発行できない）。Worker が `opening_ciphertext` を
+  （作業員本人の、そのリングを担当していた期間に記録された自分のエントリだけ。管理者は発行できない）。Worker が `opening_ciphertext` を
   復号し、`{ v: 1, entryKey, scoreCenti, nonceHex, scoreCommitmentHex, periodDate, issuedAt }` を
   返す。コピーまたはダウンロードできる。発行のたびに `audit_log` に記録する。
 - `/verify` に貼ると、`persistentCommit(scoreCenti, nonce)` がチェーン上の `scoreCommitment` と
